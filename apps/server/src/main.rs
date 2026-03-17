@@ -1,8 +1,10 @@
 use std::{
     collections::HashMap,
     env, fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex, RwLock as StdRwLock},
+    thread,
 };
 
 use axum::{
@@ -16,16 +18,29 @@ use axum::{
     routing::{delete, get},
 };
 use futures_util::{SinkExt, StreamExt};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
-    sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
+    sessions: Arc<RwLock<HashMap<String, Arc<SessionState>>>>,
     settings: Arc<RwLock<WindowsTerminalSettings>>,
     settings_path: Arc<PathBuf>,
+}
+
+struct SessionState {
+    meta: StdRwLock<SessionRecord>,
+    runtime: SessionRuntime,
+}
+
+struct SessionRuntime {
+    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    child: Arc<Mutex<Box<dyn Child + Send>>>,
+    events: broadcast::Sender<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +71,105 @@ impl SessionRecord {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+impl SessionState {
+    fn summary(&self) -> SessionSummary {
+        self.meta
+            .read()
+            .expect("session summary lock poisoned")
+            .summary()
+    }
+
+    fn snapshot(&self) -> (SessionSummary, String) {
+        let meta = self.meta.read().expect("session snapshot lock poisoned");
+        (meta.summary(), meta.transcript.clone())
+    }
+
+    fn sort_index(&self) -> usize {
+        self.meta
+            .read()
+            .expect("session sort index lock poisoned")
+            .sort_index
+    }
+
+    fn mark_attached(&self) {
+        let mut meta = self.meta.write().expect("session attach lock poisoned");
+        meta.has_activity = false;
+        meta.last_used_label = "Now".to_string();
+    }
+
+    fn subscribe(&self) -> broadcast::Receiver<String> {
+        self.runtime.events.subscribe()
+    }
+
+    fn write_input(&self, data: &str) -> Result<(), String> {
+        {
+            let mut writer = self
+                .runtime
+                .writer
+                .lock()
+                .map_err(|_| "input writer lock poisoned".to_string())?;
+            writer
+                .write_all(data.as_bytes())
+                .and_then(|_| writer.flush())
+                .map_err(|error| format!("failed to write input to PTY: {error}"))?;
+        }
+
+        let mut meta = self.meta.write().expect("session input lock poisoned");
+        meta.last_used_label = "Now".to_string();
+        Ok(())
+    }
+
+    fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
+        self.runtime
+            .master
+            .lock()
+            .map_err(|_| "PTY master lock poisoned".to_string())?
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|error| format!("failed to resize PTY: {error}"))
+    }
+
+    fn append_output(&self, output: &str) {
+        if output.is_empty() {
+            return;
+        }
+
+        {
+            let mut meta = self.meta.write().expect("session output lock poisoned");
+            meta.transcript.push_str(output);
+            meta.has_activity = true;
+            if meta.last_used_label != "Now" {
+                meta.last_used_label = "Updated".to_string();
+            }
+        }
+
+        let _ = self.runtime.events.send(output.to_string());
+    }
+
+    fn mark_exited(&self, status: String) {
+        let mut meta = self.meta.write().expect("session exit lock poisoned");
+        meta.status = "idle".to_string();
+        meta.has_activity = true;
+        meta.last_used_label = status;
+    }
+
+    fn update_profile_if_missing(&self, next_profile_id: &str) {
+        let mut meta = self.meta.write().expect("session profile lock poisoned");
+        meta.profile_id = next_profile_id.to_string();
+    }
+
+    fn terminate(&self) {
+        if let Ok(mut child) = self.runtime.child.lock() {
+            let _ = child.kill();
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionSummary {
     id: String,
@@ -88,7 +201,7 @@ struct HealthResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateSessionRequest {
-    #[serde(default, alias = "profile_id")]
+    #[serde(default, alias = "profile_id", alias = "profileId")]
     profile_id: Option<String>,
     #[serde(default)]
     cwd: Option<String>,
@@ -135,8 +248,13 @@ enum ServerMessage {
         #[serde(rename = "sessionId")]
         session_id: String,
     },
-    Output { data: String },
-    Resized { cols: u16, rows: u16 },
+    Output {
+        data: String,
+    },
+    Resized {
+        cols: u16,
+        rows: u16,
+    },
     Pong,
 }
 
@@ -326,16 +444,51 @@ struct WtColorScheme {
     bright_white: Option<String>,
 }
 
+struct LaunchPlan {
+    command: CommandBuilder,
+    command_label: String,
+    fallback_command: Option<CommandBuilder>,
+    fallback_label: Option<String>,
+    cwd: PathBuf,
+    notes: Vec<String>,
+}
+
+struct SpawnedPty {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn Child + Send>,
+    reader: Box<dyn Read + Send>,
+}
+
 #[tokio::main]
 async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("webpty server failed: {error}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let port = env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
         .unwrap_or(3001);
 
     let settings_path = default_settings_path();
-    let settings = load_settings(&settings_path).expect("failed to load settings");
-    let sessions = seed_sessions(&settings);
+    let settings = load_settings(&settings_path).unwrap_or_else(|error| {
+        eprintln!(
+            "failed to load settings from {}: {error}. Falling back to defaults.",
+            settings_path.display()
+        );
+        let defaults =
+            normalize_settings(default_settings()).expect("default settings should be valid");
+        let _ = persist_settings(&settings_path, &defaults);
+        defaults
+    });
+    let sessions = seed_sessions(&settings).unwrap_or_else(|error| {
+        eprintln!("failed to seed PTY sessions: {error}");
+        HashMap::new()
+    });
 
     let state = AppState {
         sessions: Arc::new(RwLock::new(sessions)),
@@ -353,34 +506,32 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
-        .await
-        .expect("failed to bind TCP listener");
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
 
     println!("webpty server listening on http://127.0.0.1:{port}");
 
-    axum::serve(listener, app)
-        .await
-        .expect("server failed unexpectedly");
+    axum::serve(listener, app).await?;
+    Ok(())
 }
 
 async fn root() -> &'static str {
-    "webpty server"
+    "webpty PTY server"
 }
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
-        message: "WT-compatible contract server ready".to_string(),
+        message: "WT-compatible PTY server ready".to_string(),
         websocket_path: "/ws/:sessionId".to_string(),
-        mode: "settings-contract".to_string(),
+        mode: "pty-runtime".to_string(),
         features: vec![
             "health",
             "settings-read",
             "settings-write",
             "sessions-list",
             "sessions-create-delete",
-            "websocket-transcript-replay",
+            "websocket-live-pty",
+            "pty-resize-input-output",
         ],
     })
 }
@@ -394,7 +545,10 @@ async fn update_settings(
     Json(payload): Json<WindowsTerminalSettings>,
 ) -> Result<Json<WindowsTerminalSettings>, (StatusCode, String)> {
     let normalized = normalize_settings(payload).map_err(|message| {
-        (StatusCode::BAD_REQUEST, format!("invalid settings payload: {message}"))
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid settings payload: {message}"),
+        )
     })?;
 
     persist_settings(&state.settings_path, &normalized).map_err(|error| {
@@ -410,10 +564,11 @@ async fn update_settings(
     }
 
     {
-        let mut sessions = state.sessions.write().await;
-        for session in sessions.values_mut() {
-            if resolve_profile(&normalized, &session.profile_id).is_none() {
-                session.profile_id = normalized.default_profile.clone();
+        let sessions = state.sessions.read().await;
+        for session in sessions.values() {
+            let profile_id = session.summary().profile_id;
+            if resolve_profile(&normalized, &profile_id).is_none() {
+                session.update_profile_if_missing(&normalized.default_profile);
             }
         }
     }
@@ -427,13 +582,16 @@ async fn list_sessions(State(state): State<AppState>) -> Json<SessionsResponse> 
         .read()
         .await
         .values()
-        .map(|session| (session.sort_index, session.summary()))
+        .cloned()
         .collect::<Vec<_>>();
 
-    sessions.sort_by_key(|(sort_index, _)| *sort_index);
+    sessions.sort_by_key(|session| session.sort_index());
 
     Json(SessionsResponse {
-        sessions: sessions.into_iter().map(|(_, summary)| summary).collect(),
+        sessions: sessions
+            .into_iter()
+            .map(|session| session.summary())
+            .collect(),
     })
 }
 
@@ -442,47 +600,45 @@ async fn create_session(
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
     let settings = state.settings.read().await.clone();
-    let profile_id = resolve_requested_profile_id(&settings, payload.profile_id.as_deref()).ok_or((
-        StatusCode::BAD_REQUEST,
-        "unknown profileId and no defaultProfile available".to_string(),
-    ))?;
-    let profile = resolve_profile(&settings, &profile_id).ok_or((
+    let profile_id =
+        resolve_requested_profile_id(&settings, payload.profile_id.as_deref()).ok_or((
+            StatusCode::BAD_REQUEST,
+            "unknown profileId and no defaultProfile available".to_string(),
+        ))?;
+    let profile = resolve_profile(&settings, &profile_id).cloned().ok_or((
         StatusCode::BAD_REQUEST,
         format!("profile `{profile_id}` is not defined in settings"),
     ))?;
     let title = payload
         .title
         .unwrap_or_else(|| format!("{}-tab", slugify(&profile.name)));
-    let cwd = payload.cwd.unwrap_or_else(|| "~/projects/webpty".to_string());
-    let transcript = seeded_transcript(&title, &profile.name, &cwd, profile.commandline.as_deref());
     let sort_index = {
         let sessions = state.sessions.read().await;
         sessions
             .values()
-            .map(|session| session.sort_index)
+            .map(|session| session.sort_index())
             .max()
             .unwrap_or(0)
             + 1
     };
-    let record = SessionRecord {
-        id: format!("session-{}", Uuid::new_v4().simple()),
-        title: title.clone(),
-        profile_id: profile_id.clone(),
-        cwd: cwd.clone(),
-        status: "running".to_string(),
-        has_activity: false,
-        last_used_label: "Now".to_string(),
-        sort_index,
-        transcript,
-    };
 
-    let summary = record.summary();
+    let session = spawn_session(
+        &settings,
+        format!("session-{}", Uuid::new_v4().simple()),
+        title.clone(),
+        profile_id.clone(),
+        payload.cwd,
+        sort_index,
+    )
+    .map_err(|message| (StatusCode::INTERNAL_SERVER_ERROR, message))?;
+
+    let summary = session.summary();
 
     state
         .sessions
         .write()
         .await
-        .insert(record.id.clone(), record.clone());
+        .insert(summary.id.clone(), session);
 
     Ok(Json(CreateSessionResponse {
         tab: PrototypeTab {
@@ -492,8 +648,8 @@ async fn create_session(
         },
         pane: PrototypePane {
             id: format!("pane-{}", Uuid::new_v4().simple()),
-            session_id: record.id.clone(),
-            title: record.title.clone(),
+            session_id: summary.id.clone(),
+            title: summary.title.clone(),
         },
         session: summary,
     }))
@@ -503,9 +659,10 @@ async fn delete_session(
     State(state): State<AppState>,
     AxumPath(session_id): AxumPath<String>,
 ) -> StatusCode {
-    let deleted = state.sessions.write().await.remove(&session_id).is_some();
+    let removed = state.sessions.write().await.remove(&session_id);
 
-    if deleted {
+    if let Some(session) = removed {
+        session.terminate();
         StatusCode::NO_CONTENT
     } else {
         StatusCode::NOT_FOUND
@@ -517,27 +674,18 @@ async fn ws_handler(
     AxumPath(session_id): AxumPath<String>,
     State(state): State<AppState>,
 ) -> Response {
-    let exists = state.sessions.read().await.contains_key(&session_id);
+    let session = state.sessions.read().await.get(&session_id).cloned();
 
-    if !exists {
-        return StatusCode::NOT_FOUND.into_response();
+    match session {
+        Some(session) => ws.on_upgrade(move |socket| handle_socket(socket, session)),
+        None => StatusCode::NOT_FOUND.into_response(),
     }
-
-    ws.on_upgrade(move |socket| handle_socket(socket, session_id, state))
 }
 
-async fn handle_socket(socket: WebSocket, session_id: String, state: AppState) {
-    let (summary, transcript) = {
-        let mut sessions = state.sessions.write().await;
-        let Some(session) = sessions.get_mut(&session_id) else {
-            return;
-        };
-
-        session.has_activity = false;
-        session.last_used_label = "Now".to_string();
-        (session.summary(), session.transcript.clone())
-    };
-
+async fn handle_socket(socket: WebSocket, session: Arc<SessionState>) {
+    session.mark_attached();
+    let (summary, transcript) = session.snapshot();
+    let mut events = session.subscribe();
     let (mut sender, mut receiver) = socket.split();
 
     if send_json(
@@ -552,62 +700,77 @@ async fn handle_socket(socket: WebSocket, session_id: String, state: AppState) {
         return;
     }
 
-    if send_json(&mut sender, &ServerMessage::Output { data: transcript })
-        .await
-        .is_err()
+    if !transcript.is_empty()
+        && send_json(&mut sender, &ServerMessage::Output { data: transcript })
+            .await
+            .is_err()
     {
         return;
     }
 
-    while let Some(Ok(message)) = receiver.next().await {
-        match message {
-            Message::Text(payload) => {
-                let Ok(client_message) = serde_json::from_str::<ClientMessage>(&payload) else {
-                    continue;
+    loop {
+        tokio::select! {
+            maybe_message = receiver.next() => {
+                let Some(message) = maybe_message else {
+                    break;
                 };
 
-                match client_message {
-                    ClientMessage::Input { data } => {
-                        let delta = {
-                            let mut sessions = state.sessions.write().await;
-                            let Some(session) = sessions.get_mut(&session_id) else {
-                                break;
-                            };
-
-                            session.last_used_label = "Now".to_string();
-                            let appended = format!(
-                                "$ {}\r\nmock transport received input for {}\r\n",
-                                data.trim_end(),
-                                session.title
-                            );
-                            session.transcript.push_str(&appended);
-                            appended
+                match message {
+                    Ok(Message::Text(payload)) => {
+                        let Ok(client_message) = serde_json::from_str::<ClientMessage>(&payload) else {
+                            continue;
                         };
 
-                        if send_json(&mut sender, &ServerMessage::Output { data: delta })
-                            .await
-                            .is_err()
-                        {
-                            break;
+                        match client_message {
+                            ClientMessage::Input { data } => {
+                                if let Err(error) = session.write_input(&data) {
+                                    let _ = send_json(
+                                        &mut sender,
+                                        &ServerMessage::Output {
+                                            data: format!("\r\n[webpty] {error}\r\n"),
+                                        },
+                                    )
+                                    .await;
+                                    break;
+                                }
+                            }
+                            ClientMessage::Resize { cols, rows } => {
+                                if session.resize(cols, rows).is_err() {
+                                    continue;
+                                }
+
+                                if send_json(&mut sender, &ServerMessage::Resized { cols, rows })
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                            }
+                            ClientMessage::Ping => {
+                                if send_json(&mut sender, &ServerMessage::Pong).await.is_err() {
+                                    break;
+                                }
+                            }
                         }
                     }
-                    ClientMessage::Resize { cols, rows } => {
-                        if send_json(&mut sender, &ServerMessage::Resized { cols, rows })
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    ClientMessage::Ping => {
-                        if send_json(&mut sender, &ServerMessage::Pong).await.is_err() {
-                            break;
-                        }
-                    }
+                    Ok(Message::Close(_)) | Err(_) => break,
+                    _ => {}
                 }
             }
-            Message::Close(_) => break,
-            _ => {}
+            event = events.recv() => {
+                match event {
+                    Ok(output) => {
+                        if send_json(&mut sender, &ServerMessage::Output { data: output })
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
         }
     }
 }
@@ -616,8 +779,8 @@ async fn send_json(
     sender: &mut futures_util::stream::SplitSink<WebSocket, Message>,
     payload: &ServerMessage,
 ) -> Result<(), axum::Error> {
-    let serialized = serde_json::to_string(payload)
-        .expect("server websocket payload should always serialize");
+    let serialized =
+        serde_json::to_string(payload).expect("server websocket payload should always serialize");
 
     sender.send(Message::Text(serialized.into())).await
 }
@@ -680,84 +843,405 @@ fn normalize_settings(
     Ok(settings)
 }
 
-fn seed_sessions(settings: &WindowsTerminalSettings) -> HashMap<String, SessionRecord> {
-    let profiles = settings
-        .profiles
-        .list
-        .iter()
-        .filter(|profile| profile.hidden != Some(true))
-        .collect::<Vec<_>>();
-
+fn seed_sessions(
+    settings: &WindowsTerminalSettings,
+) -> Result<HashMap<String, Arc<SessionState>>, String> {
     let default_profile_id =
-        resolve_requested_profile_id(settings, Some(&settings.default_profile)).unwrap_or_else(|| {
-            profile_key(
-                profiles
-                    .first()
-                    .copied()
-                    .unwrap_or(&settings.profiles.list[0]),
-            )
-        });
+        resolve_requested_profile_id(settings, Some(&settings.default_profile))
+            .unwrap_or_else(|| profile_key(&settings.profiles.list[0]));
 
-    let shell_profile = resolve_profile(settings, &default_profile_id)
-        .or_else(|| profiles.first().copied())
-        .unwrap_or(&settings.profiles.list[0]);
-    let ops_profile = profiles
-        .get(1)
-        .copied()
-        .or_else(|| profiles.first().copied())
-        .unwrap_or(&settings.profiles.list[0]);
-    let notes_profile = profiles
-        .get(2)
-        .copied()
-        .or_else(|| profiles.last().copied())
-        .unwrap_or(&settings.profiles.list[0]);
+    let session = spawn_session(
+        settings,
+        "session-shell".to_string(),
+        "workspace-shell".to_string(),
+        default_profile_id,
+        None,
+        0,
+    )?;
 
-    HashMap::from([
-        (
-            "session-shell".to_string(),
-            SessionRecord {
-                id: "session-shell".to_string(),
-                title: "workspace-shell".to_string(),
-                profile_id: profile_key(shell_profile),
-                cwd: "~/projects/webpty".to_string(),
-                status: "running".to_string(),
-                has_activity: false,
-                last_used_label: "Now".to_string(),
-                sort_index: 0,
-                transcript: "webpty connected\r\n$ cargo run --manifest-path apps/server/Cargo.toml\r\nWT-compatible server ready\r\n$ npm run dev:web\r\nVite preview connected\r\n".to_string(),
-            },
-        ),
-        (
-            "session-ops".to_string(),
-            SessionRecord {
-                id: "session-ops".to_string(),
-                title: "deploy-watch".to_string(),
-                profile_id: profile_key(ops_profile),
-                cwd: "~/deploy/staging".to_string(),
-                status: "attention".to_string(),
-                has_activity: true,
-                last_used_label: "Updated".to_string(),
-                sort_index: 1,
-                transcript: "kubectl get pods\r\napi-7d4bf6cd7-ptfsw   1/1 Running\r\nws-6f479cb4cc-gbr7j  1/1 Running\r\nwarning: rollout pending\r\n".to_string(),
-            },
-        ),
-        (
-            "session-notes".to_string(),
-            SessionRecord {
-                id: "session-notes".to_string(),
-                title: "release-notes".to_string(),
-                profile_id: profile_key(notes_profile),
-                cwd: "~/projects/webpty/docs".to_string(),
-                status: "idle".to_string(),
-                has_activity: false,
-                last_used_label: "Recent".to_string(),
-                sort_index: 2,
-                transcript:
-                    "# release notes\r\n- add settings.json persistence\r\n- align websocket sessionId casing\r\n- switch UI to WT-style tabs\r\n"
-                        .to_string(),
-            },
-        ),
-    ])
+    Ok(HashMap::from([("session-shell".to_string(), session)]))
+}
+
+fn spawn_session(
+    settings: &WindowsTerminalSettings,
+    id: String,
+    title: String,
+    profile_id: String,
+    cwd_override: Option<String>,
+    sort_index: usize,
+) -> Result<Arc<SessionState>, String> {
+    let profile = resolve_profile(settings, &profile_id)
+        .cloned()
+        .ok_or_else(|| format!("profile `{profile_id}` is not defined"))?;
+    let mut plan = build_launch_plan(&profile, cwd_override);
+    let spawned = spawn_pty(&mut plan)?;
+    let (events, _) = broadcast::channel(128);
+    let state = Arc::new(SessionState {
+        meta: StdRwLock::new(SessionRecord {
+            id,
+            title: title.clone(),
+            profile_id,
+            cwd: plan.cwd.display().to_string(),
+            status: "running".to_string(),
+            has_activity: false,
+            last_used_label: "Now".to_string(),
+            sort_index,
+            transcript: session_banner(&title, &profile.name, &plan),
+        }),
+        runtime: SessionRuntime {
+            master: Arc::new(Mutex::new(spawned.master)),
+            writer: Arc::new(Mutex::new(spawned.writer)),
+            child: Arc::new(Mutex::new(spawned.child)),
+            events,
+        },
+    });
+
+    spawn_reader(state.clone(), spawned.reader);
+    spawn_waiter(state.clone());
+
+    Ok(state)
+}
+
+fn build_launch_plan(profile: &WtProfile, cwd_override: Option<String>) -> LaunchPlan {
+    let mut notes = Vec::new();
+    let requested_dir = cwd_override.or_else(|| profile.starting_directory.clone());
+    let cwd = resolve_launch_cwd(requested_dir.as_deref(), &mut notes);
+
+    if let Some(commandline) = profile.commandline.as_deref() {
+        #[cfg(not(target_os = "windows"))]
+        if looks_windows_command(commandline) {
+            notes.push(format!(
+                "[webpty] `{commandline}` is a Windows-targeted profile. Using the local default shell on this host."
+            ));
+
+            return LaunchPlan {
+                command: default_shell_builder(),
+                command_label: default_shell_label(),
+                fallback_command: None,
+                fallback_label: None,
+                cwd,
+                notes,
+            };
+        }
+
+        let builder =
+            command_builder_from_commandline(commandline).unwrap_or_else(default_shell_builder);
+        let fallback = default_shell_builder();
+
+        LaunchPlan {
+            command: builder,
+            command_label: commandline.to_string(),
+            fallback_command: Some(fallback.clone()),
+            fallback_label: Some(default_shell_label()),
+            cwd,
+            notes,
+        }
+    } else {
+        LaunchPlan {
+            command: default_shell_builder(),
+            command_label: default_shell_label(),
+            fallback_command: None,
+            fallback_label: None,
+            cwd,
+            notes,
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn looks_windows_command(commandline: &str) -> bool {
+    let normalized = commandline.trim().to_ascii_lowercase();
+    normalized.ends_with(".exe")
+        || normalized.contains(".exe ")
+        || normalized.contains('\\')
+        || normalized.contains("%userprofile%")
+}
+
+fn resolve_launch_cwd(requested: Option<&str>, notes: &mut Vec<String>) -> PathBuf {
+    let fallback = env::current_dir()
+        .ok()
+        .or_else(home_dir)
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let Some(raw) = requested.filter(|value| !value.trim().is_empty()) else {
+        return fallback;
+    };
+
+    let expanded = expand_path_tokens(raw);
+    let candidate = PathBuf::from(&expanded);
+
+    if candidate.exists() {
+        return candidate;
+    }
+
+    notes.push(format!(
+        "[webpty] requested cwd `{raw}` is unavailable. Starting in `{}`.",
+        fallback.display()
+    ));
+    fallback
+}
+
+fn expand_path_tokens(value: &str) -> String {
+    let mut expanded = value.to_string();
+
+    if let Some(rest) = expanded.strip_prefix('~') {
+        if let Some(home) = home_dir() {
+            expanded = format!("{}{}", home.display(), rest);
+        }
+    }
+
+    expand_percent_vars(&expanded)
+}
+
+fn expand_percent_vars(value: &str) -> String {
+    let mut output = String::new();
+    let mut chars = value.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character != '%' {
+            output.push(character);
+            continue;
+        }
+
+        let mut name = String::new();
+        while let Some(&next) = chars.peek() {
+            chars.next();
+            if next == '%' {
+                break;
+            }
+            name.push(next);
+        }
+
+        if name.is_empty() {
+            output.push('%');
+            continue;
+        }
+
+        let replacement = env::var(&name)
+            .ok()
+            .or_else(|| {
+                if name.eq_ignore_ascii_case("userprofile") {
+                    env::var("HOME").ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| format!("%{name}%"));
+
+        output.push_str(&replacement);
+    }
+
+    output
+}
+
+fn home_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("USERPROFILE").map(PathBuf::from))
+}
+
+fn command_builder_from_commandline(commandline: &str) -> Option<CommandBuilder> {
+    let args = shlex::split(commandline)?;
+    let program = args.first()?;
+    let mut builder = CommandBuilder::new(program);
+    if args.len() > 1 {
+        builder.args(args.iter().skip(1));
+    }
+    Some(builder)
+}
+
+fn default_shell_builder() -> CommandBuilder {
+    #[cfg(windows)]
+    {
+        let shell = env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        let mut builder = CommandBuilder::new(shell);
+        builder.env("TERM", "xterm-256color");
+        builder
+    }
+
+    #[cfg(not(windows))]
+    {
+        let preferred_shell = env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let shell = if preferred_shell.contains("bash") || Path::new("/bin/bash").exists() {
+            if Path::new(&preferred_shell).exists() {
+                preferred_shell
+            } else {
+                "/bin/bash".to_string()
+            }
+        } else if Path::new(&preferred_shell).exists() {
+            preferred_shell
+        } else if Path::new("/bin/sh").exists() {
+            "/bin/sh".to_string()
+        } else {
+            preferred_shell
+        };
+
+        let mut builder = CommandBuilder::new(shell);
+        builder.env("TERM", "xterm-256color");
+
+        if cfg!(unix) {
+            if builder
+                .get_argv()
+                .first()
+                .and_then(|value| value.to_str())
+                .is_some_and(|program| program.contains("bash"))
+            {
+                builder.arg("--noprofile");
+                builder.arg("--norc");
+            }
+            builder.arg("-i");
+        }
+
+        builder
+    }
+}
+
+fn default_shell_label() -> String {
+    #[cfg(windows)]
+    {
+        env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        env::var("SHELL").unwrap_or_else(|_| "/bin/bash -i".to_string())
+    }
+}
+
+fn spawn_pty(plan: &mut LaunchPlan) -> Result<SpawnedPty, String> {
+    let mut primary = plan.command.clone();
+    primary.cwd(plan.cwd.as_os_str());
+
+    match spawn_with_builder(&primary) {
+        Ok(spawned) => Ok(spawned),
+        Err(primary_error) => {
+            let Some(mut fallback) = plan.fallback_command.clone() else {
+                return Err(format!(
+                    "failed to launch `{}` in `{}`: {primary_error}",
+                    plan.command_label,
+                    plan.cwd.display()
+                ));
+            };
+            fallback.cwd(plan.cwd.as_os_str());
+
+            let fallback_label = plan
+                .fallback_label
+                .clone()
+                .unwrap_or_else(|| "default shell".to_string());
+
+            match spawn_with_builder(&fallback) {
+                Ok(spawned) => {
+                    plan.notes.push(format!(
+                        "[webpty] `{}` could not start ({primary_error}). Falling back to `{fallback_label}`.",
+                        plan.command_label
+                    ));
+                    plan.command_label = fallback_label;
+                    plan.command = fallback;
+                    plan.fallback_command = None;
+                    Ok(spawned)
+                }
+                Err(fallback_error) => Err(format!(
+                    "failed to launch `{}` ({primary_error}) and fallback `{fallback_label}` ({fallback_error})",
+                    plan.command_label
+                )),
+            }
+        }
+    }
+}
+
+fn spawn_with_builder(builder: &CommandBuilder) -> Result<SpawnedPty, String> {
+    let pty_system = native_pty_system();
+    let pair = pty_system
+        .openpty(PtySize {
+            rows: 36,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .map_err(|error| format!("failed to open PTY: {error}"))?;
+    let reader = pair
+        .master
+        .try_clone_reader()
+        .map_err(|error| format!("failed to clone PTY reader: {error}"))?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|error| format!("failed to create PTY writer: {error}"))?;
+    let child = pair
+        .slave
+        .spawn_command(builder.clone())
+        .map_err(|error| format!("failed to spawn process: {error}"))?;
+
+    Ok(SpawnedPty {
+        master: pair.master,
+        writer,
+        child,
+        reader,
+    })
+}
+
+fn session_banner(title: &str, profile_name: &str, plan: &LaunchPlan) -> String {
+    let mut transcript = format!(
+        "webpty connected\r\nsession: {title}\r\nprofile: {profile_name}\r\ncwd: {}\r\ncommandline: {}\r\n",
+        plan.cwd.display(),
+        plan.command_label
+    );
+
+    if !plan.notes.is_empty() {
+        transcript.push_str(&plan.notes.join("\r\n"));
+        transcript.push_str("\r\n");
+    }
+
+    transcript.push_str("\r\n");
+    transcript
+}
+
+fn spawn_reader(session: Arc<SessionState>, mut reader: Box<dyn Read + Send>) {
+    thread::spawn(move || {
+        let mut buffer = [0_u8; 4096];
+
+        loop {
+            match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(read) => {
+                    let output = String::from_utf8_lossy(&buffer[..read]).to_string();
+                    session.append_output(&output);
+                }
+                Err(error) => {
+                    session.append_output(&format!("\r\n[webpty] PTY read error: {error}\r\n"));
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn spawn_waiter(session: Arc<SessionState>) {
+    thread::spawn(move || {
+        let status = {
+            let mut child = match session.runtime.child.lock() {
+                Ok(child) => child,
+                Err(_) => return,
+            };
+            child.wait()
+        };
+
+        match status {
+            Ok(exit_status) => {
+                let label = format!("Exited {}", exit_status.exit_code());
+                session.mark_exited(label);
+                session.append_output(&format!(
+                    "\r\n[webpty] process exited with {exit_status}\r\n"
+                ));
+            }
+            Err(error) => {
+                session.mark_exited("Exited".to_string());
+                session.append_output(&format!(
+                    "\r\n[webpty] failed while waiting for process exit: {error}\r\n"
+                ));
+            }
+        }
+    });
 }
 
 fn resolve_requested_profile_id(
@@ -808,13 +1292,6 @@ fn preview_lines(transcript: &str) -> Vec<String> {
         .into_iter()
         .rev()
         .collect()
-}
-
-fn seeded_transcript(title: &str, profile_name: &str, cwd: &str, commandline: Option<&str>) -> String {
-    format!(
-        "webpty connected\r\nsession: {title}\r\nprofile: {profile_name}\r\ncwd: {cwd}\r\ncommandline: {}\r\n\r\nmock transport ready\r\n",
-        commandline.unwrap_or("default shell")
-    )
 }
 
 fn slugify(value: &str) -> String {

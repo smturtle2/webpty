@@ -2,7 +2,7 @@
 
 # webpty
 
-**A simple Rust-backed terminal app for the browser**
+**A Rust-backed, Windows Terminal-compatible terminal shell for the browser**
 
 [![GitHub stars](https://img.shields.io/github/stars/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/issues)
@@ -13,15 +13,12 @@
 
 </div>
 
-`webpty` is a browser-first terminal app inspired by the visual restraint and
-practical session management of Windows Terminal.
+`webpty` keeps the terminal dominant: the shell owns almost the whole screen,
+sessions live in a narrow rail on the right, and a WT-compatible settings file
+drives profiles, themes, and keyboard shortcuts.
 
-The current prototype is intentionally narrow:
-
-- one large terminal surface
-- a restrained top chrome and tab strip
-- a WT-compatible settings studio
-- Rust HTTP/WebSocket contracts behind the UI
+The app is intentionally smaller than Windows Terminal, but it now runs a real
+Rust PTY backend instead of a mock transcript transport.
 
 ## Preview
 
@@ -29,32 +26,32 @@ The current prototype is intentionally narrow:
 
 ## Current Status
 
-What exists today:
+Implemented today:
 
-- a Windows Terminal-inspired shell with tabs, profile launchers, and settings studio
-- one active `xterm.js` viewport with live mock WebSocket input/output
-- WT-compatible `settings.json` loading and persistence at `config/webpty.settings.json`
-- keyboard shortcuts for new session, close session, session cycling, and settings
-- a Rust/Axum contract server for health, settings, sessions, and WebSocket transcript replay
+- live PTY-backed sessions from a Rust/Axum server
+- one dominant terminal surface with a narrow right-side session rail
+- WT-compatible `settings.json` loading, normalization, and persistence
+- profile launchers, default profile selection, and theme switching
+- WebSocket input/output streaming and PTY resize handling
 
-What does not exist yet:
+Not implemented yet:
 
-- real PTY integration
-- tab drag/drop
 - split panes
-- search, palette, and command surface parity
+- command palette and search surface
+- drag/drop or manual tab reordering
+- deeper Windows Terminal action object parity
+- session restoration across app restarts
 
-## Philosophy
+## Product Direction
 
-The goal right now is not “every terminal feature”.
+The reference project is [microsoft/terminal](https://github.com/microsoft/terminal).
 
-The goal is:
+The goal is not line-by-line parity. The goal is:
 
-- a clean shell that feels like a real terminal app
-- clear session switching
-- compatible theme and profile definitions from WT-style settings
-- minimal chrome
-- a Rust core that can later own PTY lifecycle and transport
+- a shell that feels like a terminal application first
+- compatibility with the useful Windows Terminal settings subset
+- a Rust runtime that owns PTY lifecycle, input, resize, and streaming
+- restrained chrome with a cleaner browser footprint than a dashboard-style UI
 
 ## Quick Start
 
@@ -70,40 +67,41 @@ The goal is:
 npm install
 ```
 
+### Run the Rust backend
+
+```bash
+cargo run --manifest-path apps/server/Cargo.toml
+```
+
 ### Run the frontend
 
 ```bash
 npm run dev:web
 ```
 
-### Run the Rust server
-
-```bash
-cargo run --manifest-path apps/server/Cargo.toml
-```
-
-The frontend runs standalone as a UI prototype. In development mode it can also
-probe the Rust server through the Vite proxy.
-
-The server loads and saves the compatible settings subset from
-`config/webpty.settings.json`.
+The Vite dev server proxies `/api` and `/ws` requests to `http://127.0.0.1:3001`.
 
 ## Validate
 
 ```bash
-npm run lint:web
 npm run build:web
 cargo check --manifest-path apps/server/Cargo.toml
 ```
+
+`npm run lint:web` is still configured, but it currently hangs in this workspace
+and needs separate investigation.
 
 ## Project Structure
 
 ```text
 .
 ├── apps/
-│   ├── server/   # Axum contract server and mock session transport
-│   └── web/      # React/Vite terminal UI
+│   ├── server/   # Axum PTY runtime and WT-compatible settings contracts
+│   └── web/      # React/Vite terminal shell UI
+├── config/
+│   └── webpty.settings.json
 ├── docs/
+│   ├── compatibility.md
 │   ├── research-spec.md
 │   ├── runtime-contracts.md
 │   └── assets/
@@ -113,36 +111,32 @@ cargo check --manifest-path apps/server/Cargo.toml
 ## Architecture
 
 ```text
-React UI
-  ├─ top chrome
-  ├─ tab strip + profile launcher
-  ├─ active terminal viewport
+React shell
+  ├─ terminal stage
+  ├─ overlay controls
+  ├─ right-side session rail
   └─ settings studio
        ↓
 HTTP + WebSocket
        ↓
-Rust core
-  ├─ health, settings, and session endpoints
-  ├─ transcript replay mock transport today
-  └─ real PTY transport later
+Rust runtime
+  ├─ WT-compatible settings load/save
+  ├─ PTY-backed session lifecycle
+  ├─ input / resize / output streaming
+  └─ session creation and deletion
 ```
 
 ## Documentation
 
+- [Compatibility notes](./docs/compatibility.md)
 - [Research spec](./docs/research-spec.md)
 - [Runtime contracts](./docs/runtime-contracts.md)
 
 ## Roadmap
 
-- [ ] Replace mock transport with a PTY-backed session layer
-- [x] Stream live mock shell output over WebSocket
-- [ ] Persist session state
-- [x] Add a WT-compatible settings studio and theme switching
-- [ ] Reintroduce deeper Windows Terminal features such as panes, palette, and search
-
-## Inspiration
-
-- [microsoft/terminal](https://github.com/microsoft/terminal)
-
-The current app is intentionally simpler than Windows Terminal. The reference
-is mostly about **tone, density, and terminal-app feel**, not feature parity.
+- [x] Replace mock transport with a PTY-backed session layer
+- [x] Move to a terminal-dominant layout with a right-side session rail
+- [x] Keep WT-compatible theme and profile editing in-app
+- [ ] Add split panes
+- [ ] Reintroduce search and command palette surfaces
+- [ ] Expand WT settings and action compatibility

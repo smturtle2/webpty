@@ -19,21 +19,33 @@ import {
   resolveScheme,
   resolveThemeName,
   resolveUiTheme,
+  sessionLabel,
 } from './lib/windowsTerminal'
 import type {
   ServerHealth,
   SessionItem,
   UiThemeTokens,
+  WindowsTerminalAction,
   WindowsTerminalProfile,
   WindowsTerminalSettings,
 } from './types'
 
 type ConnectionState = 'connecting' | 'live' | 'offline'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+type SupportedActionCommand = 'newTab' | 'closeTab' | 'nextTab' | 'prevTab' | 'openSettings'
+type ActionBindings = Record<SupportedActionCommand, string[]>
+
+const DEFAULT_ACTION_BINDINGS: ActionBindings = {
+  newTab: ['ctrl+t'],
+  closeTab: ['ctrl+w'],
+  nextTab: ['ctrl+tab'],
+  prevTab: ['ctrl+shift+tab'],
+  openSettings: ['ctrl+,'],
+}
 
 function App() {
-  const [settings, setSettings] = useState(demoSettings)
-  const [sessions, setSessions] = useState(demoSessions)
+  const [settings, setSettings] = useState<WindowsTerminalSettings>(demoSettings)
+  const [sessions, setSessions] = useState<SessionItem[]>(demoSessions)
   const [activeSessionId, setActiveSessionId] = useState(demoSessions[0].id)
   const [serverHealth, setServerHealth] = useState<ServerHealth>(demoHealth)
   const [remoteReady, setRemoteReady] = useState(false)
@@ -49,21 +61,20 @@ function App() {
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? demoSessions[0]
   const activeProfile = resolveProfile(settings, activeSession.profileId)
+  const defaultProfile = resolveProfile(settings, settings.defaultProfile)
   const activeScheme = resolveScheme(settings, activeProfile, appearance)
   const themeName = resolveThemeName(settings.theme, appearance) ?? 'System'
   const uiTheme = resolveUiTheme(settings, activeProfile, appearance)
   const visibleProfiles = settings.profiles.list
-    .filter((profile) => !profile.hidden)
+    .filter((profile) => profile.hidden !== true)
     .map((profile) => resolveProfile(settings, profileIdentifier(profile)))
-  const shortcuts =
-    settings.actions
-      ?.map((action) => ({
-        command: action.command ?? 'action',
-        keys: actionLabel(action.keys),
-      }))
-      .filter((action) => action.keys.length > 0)
-      .slice(0, 5) ??
-    []
+  const actionBindings = resolveActionBindings(settings.actions)
+  const shortcutSummary = [
+    { command: 'new tab', keys: actionLabel(actionBindings.newTab) },
+    { command: 'close tab', keys: actionLabel(actionBindings.closeTab) },
+    { command: 'next tab', keys: actionLabel(actionBindings.nextTab) },
+    { command: 'settings', keys: actionLabel(actionBindings.openSettings) },
+  ].filter((shortcut) => shortcut.keys.length > 0)
   const canConnect = remoteReady && serverHealth.status === 'ok'
   const isDraftDirty = settingsDraft !== formatSettingsJson(settings)
 
@@ -98,7 +109,7 @@ function App() {
           ? normalizeHealth(healthResult.value)
           : {
               ...demoHealth,
-              message: 'Rust server unavailable, running local demo shell',
+              message: 'Rust PTY server unavailable, running local demo shell',
             }
       const nextSettings =
         settingsResult.status === 'fulfilled'
@@ -109,6 +120,7 @@ function App() {
           ? normalizeSessions(sessionsResult.value)
           : demoSessions
       const ready =
+        healthResult.status === 'fulfilled' &&
         settingsResult.status === 'fulfilled' &&
         sessionsResult.status === 'fulfilled' &&
         nextSessions.length > 0
@@ -183,6 +195,9 @@ function App() {
   }
 
   async function createSession(profileId = activeProfile.id) {
+    const targetProfile = resolveProfile(settings, profileId)
+    const nextCwd = targetProfile.startingDirectory ?? activeSession.cwd
+
     if (canConnect) {
       try {
         const payload = await fetchJson('/api/sessions', undefined, {
@@ -192,7 +207,7 @@ function App() {
           },
           body: JSON.stringify({
             profileId,
-            cwd: activeSession.cwd,
+            cwd: nextCwd,
           }),
         })
         const created = normalizeCreatedSession(payload)
@@ -209,7 +224,7 @@ function App() {
       }
     }
 
-    const fallback = createFallbackSession(profileId, activeSession.cwd, settings, nextSessionIdRef)
+    const fallback = createFallbackSession(profileId, nextCwd, settings, nextSessionIdRef)
 
     startTransition(() => {
       setSessions((currentSessions) => [...promoteSessions(currentSessions), fallback])
@@ -269,32 +284,35 @@ function App() {
   }
 
   const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    const command = event.ctrlKey || event.metaKey
-    const key = event.key.toLowerCase()
-
-    if (!command) {
+    if (isTypingTarget(event.target)) {
       return
     }
 
-    if (key === 'tab') {
+    if (matchesAction(event, actionBindings.prevTab)) {
       event.preventDefault()
-      cycleSession(event.shiftKey ? -1 : 1)
+      cycleSession(-1)
       return
     }
 
-    if (key === 't') {
+    if (matchesAction(event, actionBindings.nextTab)) {
+      event.preventDefault()
+      cycleSession(1)
+      return
+    }
+
+    if (matchesAction(event, actionBindings.newTab)) {
       event.preventDefault()
       void createSession()
       return
     }
 
-    if (key === 'w') {
+    if (matchesAction(event, actionBindings.closeTab)) {
       event.preventDefault()
       void closeSession(activeSessionId)
       return
     }
 
-    if (key === ',') {
+    if (matchesAction(event, actionBindings.openSettings)) {
       event.preventDefault()
       setIsSettingsOpen((current) => !current)
     }
@@ -351,6 +369,15 @@ function App() {
     await commitSettings(nextSettings, canConnect)
   }
 
+  async function handleDefaultProfileSelect(profileId: string) {
+    const nextSettings: WindowsTerminalSettings = {
+      ...settings,
+      defaultProfile: profileId,
+    }
+
+    await commitSettings(nextSettings, canConnect)
+  }
+
   async function handleSettingsSave() {
     try {
       const parsed = JSON.parse(settingsDraft) as WindowsTerminalSettings
@@ -370,269 +397,348 @@ function App() {
   }
 
   return (
-    <main className={`terminal-app ${isSettingsOpen ? 'is-studio-open' : ''}`} style={themeVars(uiTheme)}>
-      <div className="backdrop-orbit" />
+    <main
+      className={`terminal-app ${isSettingsOpen ? 'is-studio-open' : ''}`}
+      style={themeVars(uiTheme)}
+    >
+      <div className="shell-noise" />
 
-      <section className="terminal-window">
-        <header className="window-topbar">
-          <div className="app-title">
-            <span className="app-mark">wt</span>
-            <div>
-              <strong>webpty</strong>
-              <p>Windows Terminal compatible shell studio</p>
+      <section className="terminal-shell">
+        <section className="viewport-stage">
+          <div className="terminal-stage">
+            <TerminalViewport
+              key={`${activeSession.id}-${canConnect ? 'live' : 'offline'}`}
+              active={true}
+              canConnect={canConnect}
+              cursorShape={activeProfile.cursorShape}
+              fallbackLines={activeSession.previewLines}
+              fontFamily={activeProfile.fontFace ?? 'Cascadia Mono'}
+              fontSize={activeProfile.fontSize ?? 13}
+              lineHeight={activeProfile.lineHeight ?? 1.22}
+              onConnectionStateChange={handleConnectionStateChange}
+              onTranscriptChange={handleTranscriptChange}
+              scheme={activeScheme}
+              sessionId={activeSession.id}
+            />
+
+            <header className="stage-toolbar">
+              <div className="stage-cluster">
+                <div className="stage-brand">
+                  <span className="app-mark">wt</span>
+                  <div>
+                    <strong>webpty</strong>
+                    <p>
+                      {activeSession.title} · {activeProfile.name}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="toolbar-copy">
+                  <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
+                    {canConnect ? 'pty online' : 'local fallback'}
+                  </span>
+                  <span
+                    className={`status-pill ${
+                      connectionState === 'live' ? 'is-accent' : 'subtle'
+                    }`}
+                  >
+                    {connectionState === 'live' ? 'streaming' : connectionState}
+                  </span>
+                  <span className="status-pill subtle">{themeName}</span>
+                </div>
+              </div>
+
+              <div className="toolbar-group">
+                <button type="button" className="toolbar-button" onClick={() => void createSession()}>
+                  New
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button ghost"
+                  onClick={() => setIsSettingsOpen((current) => !current)}
+                >
+                  {isSettingsOpen ? 'Hide studio' : 'Studio'}
+                </button>
+              </div>
+            </header>
+
+            <div className="stage-banner" aria-label="Session summary">
+              <div className="banner-block">
+                <span className="header-label">Session</span>
+                <strong>{activeSession.title}</strong>
+                <span>{activeProfile.commandline ?? 'Default shell'}</span>
+              </div>
+
+              <div className="banner-block">
+                <span className="header-label">Theme</span>
+                <strong>{themeName}</strong>
+                <span>
+                  {activeScheme.name} · {Math.round(activeProfile.opacity ?? 100)}% opacity
+                </span>
+              </div>
+
+              <div className="banner-block">
+                <span className="header-label">Working directory</span>
+                <strong>{activeSession.cwd}</strong>
+                <span>{serverHealth.websocketPath}</span>
+              </div>
             </div>
+
+            <footer className="stage-footer">
+              <div className="footer-copy">
+                <span>{isBooting ? 'Syncing runtime contracts…' : serverHealth.message}</span>
+                <span>{`${sessions.length} tabs`}</span>
+                <span>{activeSession.status}</span>
+              </div>
+
+              <div className="footer-shortcuts">
+                {shortcutSummary.map((shortcut) => (
+                  <span key={`${shortcut.command}-${shortcut.keys}`} className="shortcut-pill">
+                    {shortcut.command}: {shortcut.keys}
+                  </span>
+                ))}
+              </div>
+            </footer>
+
+            <aside
+              className={`settings-drawer ${isSettingsOpen ? 'is-open' : ''}`}
+              aria-label="Settings studio"
+            >
+              <div className="drawer-header">
+                <div>
+                  <span className="header-label">Studio</span>
+                  <strong>Windows Terminal settings</strong>
+                  <p>Theme, profile, and settings.json controls stay compatible with the WT subset.</p>
+                </div>
+                <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
+                  {saveState === 'saving'
+                    ? 'saving'
+                    : saveState === 'saved'
+                      ? 'saved'
+                      : saveState === 'error'
+                        ? 'error'
+                        : 'idle'}
+                </span>
+              </div>
+
+              <section className="drawer-section">
+                <div className="section-heading">
+                  <strong>Appearance</strong>
+                  <p>Apply WT `themes[]` live to the shell chrome, rail, and stage overlay.</p>
+                </div>
+
+                <div className="theme-grid">
+                  {settings.themes?.map((theme) => {
+                    const previewTheme = resolveUiTheme(
+                      { ...settings, theme: theme.name },
+                      activeProfile,
+                      appearance,
+                    )
+
+                    return (
+                      <button
+                        key={theme.name}
+                        type="button"
+                        className={`theme-chip ${theme.name === themeName ? 'is-active' : ''}`}
+                        style={
+                          {
+                            '--chip-accent': previewTheme.accent,
+                            '--chip-tone': previewTheme.chromeAlt,
+                          } as CSSProperties
+                        }
+                        onClick={() => void handleThemeApply(theme.name)}
+                      >
+                        <span className="theme-chip-swatch" />
+                        <span>{theme.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+
+              <section className="drawer-section">
+                <div className="section-heading">
+                  <strong>Profiles</strong>
+                  <p>Launch profiles immediately or promote one as the WT-compatible default profile.</p>
+                </div>
+
+                <div className="profile-grid">
+                  {visibleProfiles.map((profile) => {
+                    const isDefault = profile.id === defaultProfile.id
+
+                    return (
+                      <article
+                        key={profile.id}
+                        className={`profile-card ${isDefault ? 'is-default' : ''}`}
+                      >
+                        <div className="profile-card-head">
+                          <div>
+                            <strong>{profile.name}</strong>
+                            <p>{profile.commandline ?? 'Default commandline'}</p>
+                          </div>
+                          <span className="profile-badge">
+                            {isDefault ? 'default' : profile.cursorShape ?? 'block'}
+                          </span>
+                        </div>
+                        <span>{profile.startingDirectory ?? '~'}</span>
+
+                        <div className="profile-card-actions">
+                          <button
+                            type="button"
+                            className="toolbar-button"
+                            onClick={() => void createSession(profile.id)}
+                          >
+                            Launch
+                          </button>
+                          <button
+                            type="button"
+                            className="toolbar-button ghost"
+                            onClick={() => void handleDefaultProfileSelect(profile.id)}
+                            disabled={isDefault}
+                          >
+                            Set default
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              </section>
+
+              <section className="drawer-section studio-editor">
+                <div className="section-heading">
+                  <strong>settings.json</strong>
+                  <p>
+                    Supported subset: `defaultProfile`, `profiles`, `schemes`, `themes`, `actions`,
+                    `copyFormatting`
+                  </p>
+                </div>
+
+                <textarea
+                  className="settings-editor"
+                  spellCheck={false}
+                  value={settingsDraft}
+                  onChange={(event) => {
+                    setSettingsDraft(event.target.value)
+                    setSettingsError(null)
+                    if (saveState !== 'saving') {
+                      setSaveState('idle')
+                    }
+                  }}
+                />
+
+                {settingsError ? <p className="settings-error">{settingsError}</p> : null}
+
+                <div className="editor-actions">
+                  <button
+                    type="button"
+                    className="toolbar-button"
+                    onClick={() => void handleSettingsSave()}
+                    disabled={!isDraftDirty}
+                  >
+                    Save settings
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={handleSettingsReset}
+                  >
+                    Reset draft
+                  </button>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </section>
+
+        <aside className="session-rail" aria-label="Session rail">
+          <div className="rail-top">
+            <button
+              type="button"
+              className="rail-emblem"
+              onClick={() => setIsSettingsOpen((current) => !current)}
+              aria-label="Open settings studio"
+            >
+              WT
+            </button>
+            <span className="rail-caption">Sessions</span>
           </div>
 
-          <div className="topbar-status">
-            <span className={`status-pill ${canConnect ? 'is-live' : ''}`}>
-              {canConnect ? 'server online' : 'demo mode'}
-            </span>
-            <span className={`status-pill ${connectionState === 'live' ? 'is-accent' : 'subtle'}`}>
-              {connectionState === 'live' ? 'websocket live' : connectionState}
-            </span>
-            <span className="status-pill subtle">{themeName}</span>
+          <div className="rail-list" role="tablist" aria-label="Sessions">
+            {sessions.map((session) => {
+              const profile = resolveProfile(settings, session.profileId)
+              const isActive = session.id === activeSession.id
+
+              return (
+                <div
+                  key={session.id}
+                  className={`rail-tab-shell ${isActive ? 'is-active' : ''}`}
+                  style={{ '--rail-accent': profile.tabColor ?? uiTheme.accent } as CSSProperties}
+                >
+                  <button
+                    type="button"
+                    className="rail-tab"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => activateSession(session.id)}
+                  >
+                    <span className={`rail-tab-status rail-tab-status-${session.status}`} />
+                    <span className="rail-tab-icon">{profileBadge(profile)}</span>
+                    <span className="rail-tab-copy">
+                      <strong>{session.title}</strong>
+                      <span>{profile.name}</span>
+                    </span>
+                    <span className="rail-tab-meta">{sessionLabel(session, activeSession.id)}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="rail-tab-close"
+                    onClick={() => void closeSession(session.id)}
+                    aria-label={`${session.title} 닫기`}
+                  >
+                    ×
+                  </button>
+                </div>
+              )
+            })}
           </div>
 
-          <div className="topbar-actions">
-            <button type="button" className="toolbar-button" onClick={() => void createSession()}>
-              New tab
+          <div className="rail-launchers" aria-label="Profile launcher">
+            {visibleProfiles.map((profile) => (
+              <button
+                key={profile.id}
+                type="button"
+                className={`rail-profile ${profile.id === activeProfile.id ? 'is-current' : ''}`}
+                onClick={() => void createSession(profile.id)}
+                title={`New ${profile.name} tab`}
+              >
+                <span>{profileBadge(profile)}</span>
+                <small>{profile.name}</small>
+              </button>
+            ))}
+          </div>
+
+          <div className="rail-actions">
+            <button
+              type="button"
+              className="rail-action"
+              aria-label="New session"
+              onClick={() => void createSession()}
+            >
+              +
             </button>
             <button
               type="button"
-              className="toolbar-button"
+              className="rail-action"
+              aria-label="Open settings"
               onClick={() => setIsSettingsOpen((current) => !current)}
             >
-              Settings
+              ⚙
             </button>
           </div>
-        </header>
-
-        <section className="workbench">
-          <div className="terminal-column">
-            <div className="tab-strip" role="tablist" aria-label="Sessions">
-              <div className="tab-list">
-                {sessions.map((session) => {
-                  const profile = resolveProfile(settings, session.profileId)
-                  const isActive = session.id === activeSession.id
-
-                  return (
-                    <div
-                      key={session.id}
-                      className={`tab-shell ${isActive ? 'is-active' : ''}`}
-                      style={{ '--tab-accent': profile.tabColor ?? uiTheme.accent } as CSSProperties}
-                    >
-                      <button
-                        type="button"
-                        className="tab-button"
-                        role="tab"
-                        aria-selected={isActive}
-                        onClick={() => activateSession(session.id)}
-                      >
-                        <span className={`tab-status tab-status-${session.status}`} aria-hidden="true" />
-                        <span className="tab-copy">
-                          <strong>{session.title}</strong>
-                          <span>{profile.name}</span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="tab-close"
-                        onClick={() => void closeSession(session.id)}
-                        aria-label={`${session.title} 닫기`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <button
-                type="button"
-                className="tab-add"
-                aria-label="New session"
-                onClick={() => void createSession()}
-              >
-                +
-              </button>
-            </div>
-
-            <div className="terminal-header">
-              <div className="header-block">
-                <span className="header-label">Session</span>
-                <strong>{activeSession.title}</strong>
-                <p>{activeProfile.commandline ?? 'Default shell'}</p>
-              </div>
-
-              <div className="header-block">
-                <span className="header-label">Theme</span>
-                <strong>{themeName}</strong>
-                <p>
-                  {activeScheme.name} · {Math.round(activeProfile.opacity ?? 100)}% opacity
-                </p>
-              </div>
-
-              <div className="header-block">
-                <span className="header-label">Working directory</span>
-                <strong>{activeSession.cwd}</strong>
-                <p>{serverHealth.websocketPath}</p>
-              </div>
-            </div>
-
-            <div className="profile-launcher" aria-label="Profiles">
-              {visibleProfiles.map((profile) => {
-                const selected = profile.id === activeProfile.id
-
-                return (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    className={`profile-pill ${selected ? 'is-selected' : ''}`}
-                    onClick={() => void createSession(profile.id)}
-                  >
-                    <span className="profile-pill-icon">{profile.icon ?? profile.name.slice(0, 2)}</span>
-                    <span className="profile-pill-copy">
-                      <strong>{profile.name}</strong>
-                      <span>{profile.commandline ?? 'Default commandline'}</span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="terminal-frame">
-              <TerminalViewport
-                active={true}
-                canConnect={canConnect}
-                cursorShape={activeProfile.cursorShape}
-                fallbackLines={activeSession.previewLines}
-                fontFamily={activeProfile.fontFace ?? 'Cascadia Mono'}
-                fontSize={activeProfile.fontSize ?? 13}
-                lineHeight={activeProfile.lineHeight ?? 1.22}
-                onConnectionStateChange={handleConnectionStateChange}
-                onTranscriptChange={handleTranscriptChange}
-                scheme={activeScheme}
-                sessionId={activeSession.id}
-              />
-            </div>
-
-            <footer className="terminal-statusbar">
-              <span>{serverHealth.message}</span>
-              {shortcuts.length > 0
-                ? shortcuts.map((shortcut) => (
-                    <span key={`${shortcut.command}-${shortcut.keys}`}>
-                      {shortcut.command}: {shortcut.keys}
-                    </span>
-                  ))
-                : null}
-            </footer>
-          </div>
-
-          <aside className={`settings-studio ${isSettingsOpen ? 'is-open' : ''}`} aria-label="Settings studio">
-            <div className="studio-header">
-              <div>
-                <span className="header-label">Settings</span>
-                <strong>WT-compatible settings.json</strong>
-              </div>
-              <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
-                {saveState === 'saving'
-                  ? 'saving'
-                  : saveState === 'saved'
-                    ? 'saved'
-                    : saveState === 'error'
-                      ? 'error'
-                      : 'idle'}
-              </span>
-            </div>
-
-            <section className="studio-section">
-              <div className="section-heading">
-                <strong>Appearance</strong>
-                <p>Windows Terminal theme definitions are applied to the shell chrome immediately.</p>
-              </div>
-
-              <div className="theme-grid">
-                {settings.themes?.map((theme) => (
-                  <button
-                    key={theme.name}
-                    type="button"
-                    className={`theme-chip ${theme.name === themeName ? 'is-active' : ''}`}
-                    onClick={() => void handleThemeApply(theme.name)}
-                  >
-                    <span className="theme-chip-swatch" />
-                    <span>{theme.name}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="studio-section">
-              <div className="section-heading">
-                <strong>Profiles</strong>
-                <p>Profile launchers mirror `profiles.list` from the compatible settings file.</p>
-              </div>
-
-              <div className="profile-grid">
-                {visibleProfiles.map((profile) => (
-                  <article key={profile.id} className="profile-card">
-                    <div className="profile-card-head">
-                      <strong>{profile.name}</strong>
-                      <span>{profile.cursorShape ?? 'bar'}</span>
-                    </div>
-                    <p>{profile.commandline ?? 'Default commandline'}</p>
-                    <span>{profile.startingDirectory ?? '~'}</span>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="studio-section studio-editor">
-              <div className="section-heading">
-                <strong>settings.json</strong>
-                <p>
-                  Supported subset: `defaultProfile`, `profiles`, `schemes`, `themes`, `actions`,
-                  `copyFormatting`
-                </p>
-              </div>
-
-              <textarea
-                className="settings-editor"
-                spellCheck={false}
-                value={settingsDraft}
-                onChange={(event) => {
-                  setSettingsDraft(event.target.value)
-                  setSettingsError(null)
-                  if (saveState !== 'saving') {
-                    setSaveState('idle')
-                  }
-                }}
-              />
-
-              {settingsError ? <p className="settings-error">{settingsError}</p> : null}
-
-              <div className="editor-actions">
-                <button
-                  type="button"
-                  className="toolbar-button"
-                  onClick={() => void handleSettingsSave()}
-                  disabled={!isDraftDirty}
-                >
-                  Save settings
-                </button>
-                <button type="button" className="toolbar-button ghost" onClick={handleSettingsReset}>
-                  Reset draft
-                </button>
-              </div>
-            </section>
-          </aside>
-        </section>
+        </aside>
       </section>
-
-      <div className="floating-summary">
-        <span>{isBooting ? 'Loading runtime contracts…' : `${sessions.length} sessions`}</span>
-        <span>{activeProfile.name}</span>
-        <span>{activeSession.status}</span>
-      </div>
     </main>
   )
 }
@@ -665,7 +771,10 @@ function normalizeSettings(payload: unknown): WindowsTerminalSettings {
 
   return {
     $schema: asOptionalString(payload.$schema),
-    defaultProfile: asString(payload.defaultProfile ?? payload.default_profile, demoSettings.defaultProfile),
+    defaultProfile: asString(
+      payload.defaultProfile ?? payload.default_profile,
+      demoSettings.defaultProfile,
+    ),
     copyFormatting:
       payload.copyFormatting === 'none' ||
       payload.copyFormatting === 'html' ||
@@ -686,7 +795,7 @@ function normalizeSettings(payload: unknown): WindowsTerminalSettings {
                     theme.window.applicationTheme === 'system'
                       ? theme.window.applicationTheme
                       : undefined,
-                  useMica: Boolean(theme.window.useMica),
+                  useMica: asOptionalBoolean(theme.window.useMica),
                 }
               : undefined,
             tab: isRecord(theme.tab)
@@ -719,7 +828,9 @@ function normalizeSettings(payload: unknown): WindowsTerminalSettings {
           }))
       : demoSettings.actions,
     profiles: {
-      defaults: isRecord(payload.profiles.defaults) ? normalizeProfileDefaults(payload.profiles.defaults) : demoSettings.profiles.defaults,
+      defaults: isRecord(payload.profiles.defaults)
+        ? normalizeProfileDefaults(payload.profiles.defaults)
+        : demoSettings.profiles.defaults,
       list: rawProfiles.length > 0 ? rawProfiles : demoSettings.profiles.list,
     },
     schemes: Array.isArray(payload.schemes)
@@ -806,7 +917,7 @@ function normalizeProfile(payload: unknown): WindowsTerminalProfile | null {
     commandline: asOptionalString(payload.commandline),
     startingDirectory: asOptionalString(payload.startingDirectory ?? payload.starting_directory),
     source: asOptionalString(payload.source),
-    hidden: Boolean(payload.hidden),
+    hidden: asOptionalBoolean(payload.hidden),
     tabColor: asOptionalString(payload.tabColor ?? payload.tab_color),
     tabTitle: asOptionalString(payload.tabTitle ?? payload.tab_title),
     colorScheme: normalizeSchemeSelection(payload.colorScheme ?? payload.color_scheme),
@@ -822,7 +933,16 @@ function normalizeProfile(payload: unknown): WindowsTerminalProfile | null {
 }
 
 function normalizeProfileDefaults(payload: Record<string, unknown>) {
-  return normalizeProfile(payload) ?? demoSettings.profiles.defaults
+  return {
+    fontFace: asOptionalString(payload.fontFace ?? payload.font_face),
+    fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size),
+    lineHeight: asOptionalNumber(payload.lineHeight ?? payload.line_height),
+    cursorShape: asOptionalString(payload.cursorShape ?? payload.cursor_shape) as
+      | WindowsTerminalProfile['cursorShape']
+      | undefined,
+    opacity: asOptionalNumber(payload.opacity),
+    useAcrylic: asOptionalBoolean(payload.useAcrylic ?? payload.use_acrylic),
+  }
 }
 
 function normalizeThemeSelection(value: unknown) {
@@ -925,6 +1045,139 @@ function themeVars(uiTheme: UiThemeTokens) {
   } as CSSProperties
 }
 
+function resolveActionBindings(actions: WindowsTerminalAction[] | undefined): ActionBindings {
+  const bindings: ActionBindings = { ...DEFAULT_ACTION_BINDINGS }
+
+  for (const action of actions ?? []) {
+    const command = normalizeActionCommand(action.command)
+
+    if (!command || !action.keys || action.keys.length === 0) {
+      continue
+    }
+
+    bindings[command] = action.keys
+  }
+
+  return bindings
+}
+
+function normalizeActionCommand(command: string | undefined): SupportedActionCommand | null {
+  if (!command) {
+    return null
+  }
+
+  const normalized = command.replace(/[-_\s]/g, '').toLowerCase()
+
+  if (normalized === 'newtab') {
+    return 'newTab'
+  }
+
+  if (normalized === 'closetab') {
+    return 'closeTab'
+  }
+
+  if (normalized === 'nexttab') {
+    return 'nextTab'
+  }
+
+  if (normalized === 'prevtab' || normalized === 'previoustab') {
+    return 'prevTab'
+  }
+
+  if (normalized === 'opensettings') {
+    return 'openSettings'
+  }
+
+  return null
+}
+
+function matchesAction(event: KeyboardEvent, bindings: string[]) {
+  return bindings.some((binding) => matchesKeybinding(event, binding))
+}
+
+function matchesKeybinding(event: KeyboardEvent, binding: string) {
+  const parts = binding
+    .split('+')
+    .map((part) => normalizeKeyToken(part))
+    .filter((part) => part.length > 0)
+
+  if (parts.length === 0) {
+    return false
+  }
+
+  const key = parts.at(-1)
+
+  if (!key) {
+    return false
+  }
+
+  const wantsCtrl = parts.includes('ctrl')
+  const wantsShift = parts.includes('shift')
+  const wantsAlt = parts.includes('alt')
+  const wantsMeta = parts.includes('meta')
+
+  return (
+    event.ctrlKey === wantsCtrl &&
+    event.shiftKey === wantsShift &&
+    event.altKey === wantsAlt &&
+    event.metaKey === wantsMeta &&
+    normalizeKeyToken(event.key) === key
+  )
+}
+
+function normalizeKeyToken(value: string) {
+  const token = value.trim().toLowerCase()
+
+  if (token === 'control') {
+    return 'ctrl'
+  }
+
+  if (token === 'cmd' || token === 'command' || token === 'win' || token === 'super') {
+    return 'meta'
+  }
+
+  if (token === 'comma') {
+    return ','
+  }
+
+  if (token === 'space') {
+    return ' '
+  }
+
+  if (token === 'escape') {
+    return 'esc'
+  }
+
+  return token
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  const tag = target.tagName.toLowerCase()
+  return (
+    target.isContentEditable ||
+    tag === 'input' ||
+    tag === 'textarea' ||
+    tag === 'select'
+  )
+}
+
+function profileBadge(profile: WindowsTerminalProfile) {
+  if (profile.icon) {
+    return profile.icon
+  }
+
+  return profile.name
+    .split(/\s+/)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+}
+
 function resolveAppearance(): 'dark' | 'light' {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
 }
@@ -963,7 +1216,9 @@ function asOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 function asStringArray(value: unknown, fallback: string[]): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : fallback
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : fallback
 }
 
 export default App

@@ -1,6 +1,6 @@
 # webpty Runtime Contracts
 
-### `SessionItem`
+## `SessionItem`
 
 - `id: string`
 - `title: string`
@@ -22,14 +22,17 @@ Example:
 ```json
 {
   "status": "ok",
-  "message": "WT-compatible mock transport ready",
+  "message": "WT-compatible PTY server ready",
   "websocketPath": "/ws/:sessionId",
-  "mode": "settings-json",
+  "mode": "pty-runtime",
   "features": [
     "health",
-    "settings-get-put",
-    "sessions-list-create-delete",
-    "websocket-transcript-replay"
+    "settings-read",
+    "settings-write",
+    "sessions-list",
+    "sessions-create-delete",
+    "websocket-live-pty",
+    "pty-resize-input-output"
   ]
 }
 ```
@@ -39,21 +42,9 @@ Example:
 Returns the current WT-compatible `settings.json` subset loaded from
 `config/webpty.settings.json`.
 
-Supported top-level fields:
-
-- `$schema`
-- `defaultProfile`
-- `copyFormatting`
-- `theme`
-- `themes`
-- `actions`
-- `profiles.defaults`
-- `profiles.list`
-- `schemes`
-
 ### `PUT /api/settings`
 
-Accepts the same WT-compatible JSON subset and persists it to
+Accepts the same WT-compatible JSON subset and persists it back to
 `config/webpty.settings.json`.
 
 ### `GET /api/sessions`
@@ -62,24 +53,37 @@ Returns `{ "sessions": SessionItem[] }`.
 
 ### `POST /api/sessions`
 
-Creates a session record and returns:
+Creates a PTY-backed session.
+
+Accepted fields:
+
+- `profileId` or `profile_id`
+- `cwd`
+- `title`
+
+Returns:
 
 - `session`
 - `tab`
 - `pane`
 
-The frontend currently only needs the session portion conceptually, but the
-server contract is still shaped for later PTY expansion.
+The frontend primarily consumes `session`, but `tab` and `pane` are kept for
+future parity with richer terminal layouts.
 
 ### `DELETE /api/sessions/:session_id`
 
-Deletes a session record and returns `204 No Content`.
+Stops and deletes a session record. Returns `204 No Content`.
 
 ## WebSocket Protocol
 
 Endpoint: `GET /ws/:session_id`
 
 The socket is strict: unknown session IDs return `404` and are not auto-created.
+
+Connection behavior:
+
+- on connect, the current transcript snapshot is replayed once
+- subsequent PTY output is streamed as deltas
 
 ### Client messages
 
@@ -93,14 +97,14 @@ The socket is strict: unknown session IDs return `404` and are not auto-created.
 
 ```json
 { "type": "ready", "sessionId": "session-shell" }
-{ "type": "output", "data": "webpty connected\r\n" }
+{ "type": "output", "data": "PowerShell 7.5.4\r\n" }
 { "type": "resized", "cols": 120, "rows": 32 }
 { "type": "pong" }
 ```
 
 ## Prototype Assumptions
 
-- The UI does not require a live backend to render.
-- The backend is still a mock transport layer with transcript replay.
-- Theme switching and profile launchers are driven by a WT-compatible settings file.
-- Real PTY transport is the next major backend milestone.
+- The UI can still fall back to demo mode if the backend is unavailable.
+- The backend is now a real PTY runtime, not a transcript mock.
+- WT-compatible theme and profile definitions remain the main source of truth.
+- Split panes, search, and command palette remain future milestones.

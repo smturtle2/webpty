@@ -1,37 +1,3 @@
-# webpty Web App
-
-This package contains the React/Vite frontend for `webpty`.
-
-## Responsibilities
-
-- render the terminal-dominant shell layout
-- keep the narrow right-side session rail in sync with runtime sessions
-- load and save the WT-compatible settings subset
-- connect the active viewport to the Rust PTY backend over WebSocket
-
-## Development
-
-Run the backend first:
-
-```bash
-cargo run --manifest-path ../server/Cargo.toml
-```
-
-Then start the web app:
-
-```bash
-npm run dev
-```
-
-The Vite config proxies `/api` and `/ws` to `http://127.0.0.1:3001`.
-
-## Key Files
-
-- `src/App.tsx` - shell state, layout, settings studio, and keyboard handling
-- `src/components/TerminalViewport.tsx` - xterm.js viewport and WebSocket transport
-- `src/lib/windowsTerminal.ts` - WT-compatible theme/profile/scheme resolution
-- `src/data/demo.ts` - local fallback data when the backend is offline
-*** Add File: /mnt/s/ProjectForFast/webpty/docs/compatibility.md
 # webpty Compatibility Notes
 
 ## Goal

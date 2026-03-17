@@ -35,6 +35,8 @@ export function TerminalViewport({
   const fitRef = useRef<FitAddon | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const transcriptRef = useRef('')
+  const fallbackTranscriptRef = useRef(`${fallbackLines.join('\r\n')}\r\n`)
+  const resizeTimerRef = useRef<number | null>(null)
 
   const reportConnectionState = useEffectEvent((state: 'connecting' | 'live' | 'offline') => {
     onConnectionStateChange(state)
@@ -43,6 +45,10 @@ export function TerminalViewport({
   const reportTranscript = useEffectEvent((nextSessionId: string, transcript: string) => {
     onTranscriptChange(nextSessionId, transcript)
   })
+
+  useEffect(() => {
+    fallbackTranscriptRef.current = `${fallbackLines.join('\r\n')}\r\n`
+  }, [fallbackLines])
 
   const syncSize = useEffectEvent(() => {
     const fitAddon = fitRef.current
@@ -71,31 +77,21 @@ export function TerminalViewport({
     }
   })
 
+  const scheduleSyncSize = useEffectEvent(() => {
+    if (resizeTimerRef.current !== null) {
+      window.clearTimeout(resizeTimerRef.current)
+    }
+
+    resizeTimerRef.current = window.setTimeout(() => {
+      resizeTimerRef.current = null
+      syncSize()
+    }, 48)
+  })
+
   const applyOutput = useEffectEvent((nextSessionId: string, payload: string) => {
     const term = termRef.current
 
-    if (!term) {
-      return
-    }
-
-    const currentTranscript = transcriptRef.current
-
-    if (!currentTranscript) {
-      transcriptRef.current = payload
-      term.write(payload)
-      reportTranscript(nextSessionId, transcriptRef.current)
-      return
-    }
-
-    if (payload.startsWith(currentTranscript)) {
-      const delta = payload.slice(currentTranscript.length)
-
-      if (delta.length > 0) {
-        term.write(delta)
-        transcriptRef.current = payload
-        reportTranscript(nextSessionId, transcriptRef.current)
-      }
-
+    if (!term || payload.length === 0) {
       return
     }
 
@@ -135,13 +131,16 @@ export function TerminalViewport({
     fitRef.current = fitAddon
 
     const resizeObserver = new ResizeObserver(() => {
-      syncSize()
+      scheduleSyncSize()
     })
 
     resizeObserver.observe(hostRef.current)
-    syncSize()
+    scheduleSyncSize()
 
     return () => {
+      if (resizeTimerRef.current !== null) {
+        window.clearTimeout(resizeTimerRef.current)
+      }
       resizeObserver.disconnect()
       inputDisposable.dispose()
       socketRef.current?.close()
@@ -164,7 +163,7 @@ export function TerminalViewport({
     term.options.fontSize = fontSize
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
-    syncSize()
+    scheduleSyncSize()
   }, [cursorShape, fontFamily, fontSize, lineHeight, scheme])
 
   useEffect(() => {
@@ -176,16 +175,16 @@ export function TerminalViewport({
 
     socketRef.current?.close()
     socketRef.current = null
-    term.reset()
+    term.clear()
     transcriptRef.current = ''
 
     if (!canConnect) {
-      const transcript = `${fallbackLines.join('\r\n')}\r\n`
+      const transcript = fallbackTranscriptRef.current
       transcriptRef.current = transcript
       term.write(transcript)
       reportTranscript(sessionId, transcript)
       reportConnectionState('offline')
-      syncSize()
+      scheduleSyncSize()
       return
     }
 
@@ -207,7 +206,17 @@ export function TerminalViewport({
       }
 
       if (message.type === 'output' && typeof message.data === 'string') {
+        reportConnectionState('live')
         applyOutput(sessionId, message.data)
+        return
+      }
+
+      if (
+        message.type === 'resized' &&
+        typeof message.cols === 'number' &&
+        typeof message.rows === 'number'
+      ) {
+        scheduleSyncSize()
       }
     }
 
@@ -218,11 +227,17 @@ export function TerminalViewport({
       }
     }
 
+    const handleOpen = () => {
+      reportConnectionState('live')
+    }
+
+    socket.addEventListener('open', handleOpen)
     socket.addEventListener('message', handleMessage)
     socket.addEventListener('close', handleClose)
     socket.addEventListener('error', handleClose)
 
     return () => {
+      socket.removeEventListener('open', handleOpen)
       socket.removeEventListener('message', handleMessage)
       socket.removeEventListener('close', handleClose)
       socket.removeEventListener('error', handleClose)
@@ -233,7 +248,7 @@ export function TerminalViewport({
 
       socket.close()
     }
-  }, [canConnect, fallbackLines, sessionId])
+  }, [canConnect, sessionId])
 
   useEffect(() => {
     if (active) {
@@ -258,12 +273,21 @@ function mapCursorShape(shape: TerminalCursorShape | undefined): 'block' | 'bar'
 
 function buildSocketUrl(sessionId: string) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/${encodeURIComponent(sessionId)}`
+  const host = import.meta.env.DEV ? `${window.location.hostname}:3001` : window.location.host
+
+  return `${protocol}//${host}/ws/${encodeURIComponent(sessionId)}`
 }
 
-function parseMessage(value: string): { type: string; data?: string } | null {
+function parseMessage(
+  value: string,
+): { type: string; data?: string; cols?: number; rows?: number } | null {
   try {
-    return JSON.parse(value) as { type: string; data?: string }
+    return JSON.parse(value) as {
+      type: string
+      data?: string
+      cols?: number
+      rows?: number
+    }
   } catch {
     return null
   }
