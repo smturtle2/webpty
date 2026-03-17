@@ -1,24 +1,32 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
-
 :root {
-  --bg: #0c0f14;
-  --window: #11151b;
-  --chrome: #171c23;
-  --surface: #101419;
-  --text: #eef2f7;
-  --text-soft: #aeb7c1;
-  --text-muted: #7b8794;
+  --accent: #73b7ff;
+  --accent-soft: rgba(115, 183, 255, 0.22);
+  --app-bg: #070a0e;
+  --app-glow: rgba(115, 183, 255, 0.16);
+  --window: #0d1218;
+  --chrome: #141c25;
+  --chrome-alt: #182230;
+  --surface: #10161f;
+  --panel: #11171f;
+  --terminal-bg: #0c0f14;
+  --terminal-fg: #f2f5f8;
+  --tab-active: #1a2330;
+  --tab-inactive: #11171f;
+  --tab-strip: #0f151d;
+  --text: #f2f5f8;
+  --text-soft: #a0afbf;
+  --text-muted: #6d7d8d;
   --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.16);
+  --line-strong: rgba(255, 255, 255, 0.18);
   --signal: #f0a355;
-  --mint: #6fc7a2;
-  --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.35);
+  --mint: #8ed99a;
+  --shadow-soft: 0 28px 80px rgba(0, 0, 0, 0.42);
   --sans:
-    'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans', sans-serif;
+    'Segoe UI Variable Text', 'Segoe UI', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
   --mono:
-    'Cascadia Mono', 'Cascadia Code', 'IBM Plex Mono', ui-monospace, monospace;
+    'Cascadia Mono', 'Cascadia Code', 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
   color: var(--text);
-  background: var(--bg);
+  background: var(--app-bg);
   font-family: var(--sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -38,11 +46,13 @@ body,
 
 body {
   margin: 0;
-  background: #0c0f14;
+  background: var(--app-bg);
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -60,7 +70,7 @@ a {
 }
 
 ::selection {
-  background: rgba(118, 183, 240, 0.24);
+  background: color-mix(in srgb, var(--accent) 34%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

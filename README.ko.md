@@ -14,8 +14,8 @@
 현재 프로토타입은 의도적으로 범위를 좁혔습니다.
 
 - 큰 단일 터미널 영역
-- 얇은 상단 chrome
-- 우측 세션 전환 바
+- 절제된 상단 chrome과 탭 스트립
+- WT 호환 `settings.json` 스튜디오
 - Rust HTTP/WebSocket 계약 서버
 
 ## 미리보기
@@ -26,18 +26,18 @@
 
 현재 구현된 것:
 
-- 다크 톤의 단순한 터미널 앱 셸
-- `xterm.js` 기반 활성 터미널 뷰포트 1개
-- 우측 세션 리스트를 통한 세션 전환
-- 새 세션 / 세션 닫기 / 세션 순환 단축키
-- health, session 생성, WebSocket IO를 가진 Rust/Axum 서버
+- Windows Terminal 감성의 탭/프로필 런처/설정 스튜디오 셸
+- 실시간 mock WebSocket 입출력을 가진 `xterm.js` 활성 터미널 뷰포트
+- `config/webpty.settings.json` 기반 WT 호환 설정 파일 로드/저장
+- 새 세션 / 세션 닫기 / 세션 순환 / 설정 열기 단축키
+- health, settings, sessions, WebSocket transcript replay를 가진 Rust/Axum 서버
 
 아직 없는 것:
 
 - 실제 PTY 연결
 - 탭 드래그/정렬
-- Windows Terminal 스타일 설정 UI
-- 검색, palette, pane 관리
+- split panes
+- 검색, palette, command surface 수준의 기능 패리티
 
 ## 빠른 시작
 
@@ -64,6 +64,8 @@ npm run dev:web
 ```bash
 cargo run --manifest-path apps/server/Cargo.toml
 ```
+
+서버는 호환 설정 subset을 `config/webpty.settings.json`에서 로드하고 다시 저장합니다.
 
 ## 검증
 
@@ -95,9 +97,10 @@ cargo check --manifest-path apps/server/Cargo.toml
 ## 로드맵
 
 - [ ] mock transport를 PTY 세션 계층으로 교체
-- [ ] WebSocket을 통한 실시간 셸 출력 연결
+- [x] WebSocket을 통한 실시간 mock 셸 출력 연결
 - [ ] 세션 상태 저장
-- [ ] 나중에 Windows Terminal에 더 가까운 설정 UI 재도입
+- [x] WT 호환 settings studio와 테마 전환 추가
+- [ ] panes, palette, search 같은 심화 Windows Terminal 기능 재도입
 
 ## 참고
 

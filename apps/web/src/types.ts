@@ -1,11 +1,111 @@
 export type SessionStatus = 'running' | 'idle' | 'attention'
 
-export interface ProfileDefinition {
-  id: string
+export type TerminalCursorShape =
+  | 'filledBox'
+  | 'bar'
+  | 'underscore'
+  | 'vintage'
+  | 'block'
+  | 'underline'
+
+export type ThemeSelection =
+  | string
+  | {
+      dark?: string
+      light?: string
+      system?: string
+    }
+
+export type SchemeSelection =
+  | string
+  | {
+      dark?: string
+      light?: string
+    }
+
+export interface WindowsTerminalTheme {
   name: string
-  accent: string
-  icon: string
-  shell: string
+  window?: {
+    applicationTheme?: 'system' | 'dark' | 'light'
+    useMica?: boolean
+  }
+  tab?: {
+    background?: string
+    showCloseButton?: 'always' | 'hover' | 'never'
+    unfocusedBackground?: string
+  }
+  tabRow?: {
+    background?: string
+    unfocusedBackground?: string
+  }
+}
+
+export interface WindowsTerminalAction {
+  command?: string
+  keys?: string[]
+  name?: string
+}
+
+export interface WindowsTerminalColorScheme {
+  name: string
+  background: string
+  foreground: string
+  cursorColor?: string
+  selectionBackground?: string
+  black?: string
+  red?: string
+  green?: string
+  yellow?: string
+  blue?: string
+  purple?: string
+  cyan?: string
+  white?: string
+  brightBlack?: string
+  brightRed?: string
+  brightGreen?: string
+  brightYellow?: string
+  brightBlue?: string
+  brightPurple?: string
+  brightCyan?: string
+  brightWhite?: string
+}
+
+export interface WindowsTerminalProfile {
+  id?: string
+  guid?: string
+  name: string
+  icon?: string
+  commandline?: string
+  startingDirectory?: string
+  source?: string
+  hidden?: boolean
+  tabColor?: string
+  tabTitle?: string
+  colorScheme?: SchemeSelection
+  fontFace?: string
+  fontSize?: number
+  lineHeight?: number
+  cursorShape?: TerminalCursorShape
+  opacity?: number
+  useAcrylic?: boolean
+}
+
+export interface WindowsTerminalSettings {
+  $schema?: string
+  defaultProfile: string
+  copyFormatting?: 'none' | 'html' | 'all'
+  theme?: ThemeSelection
+  themes?: WindowsTerminalTheme[]
+  actions?: WindowsTerminalAction[]
+  profiles: {
+    defaults?: Partial<WindowsTerminalProfile>
+    list: WindowsTerminalProfile[]
+  }
+  schemes?: WindowsTerminalColorScheme[]
+}
+
+export interface ResolvedProfile extends WindowsTerminalProfile {
+  id: string
 }
 
 export interface SessionItem {
@@ -25,4 +125,29 @@ export interface ServerHealth {
   websocketPath: string
   mode: string
   features: string[]
+}
+
+export interface UiThemeTokens {
+  appBackground: string
+  backgroundGlow: string
+  window: string
+  chrome: string
+  chromeAlt: string
+  surface: string
+  panel: string
+  terminalBackground: string
+  terminalForeground: string
+  tabActive: string
+  tabInactive: string
+  tabStrip: string
+  border: string
+  borderStrong: string
+  text: string
+  textSoft: string
+  textMuted: string
+  accent: string
+  accentSoft: string
+  signal: string
+  success: string
+  shadow: string
 }

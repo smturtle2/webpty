@@ -16,8 +16,10 @@ The reference point from Windows Terminal is:
 Included:
 
 - top chrome
+- tab strip
 - one active terminal viewport
-- right-side session rail
+- profile launcher
+- settings studio with WT-compatible `settings.json`
 - session switching by click and keyboard
 
 Excluded for now:
@@ -25,7 +27,6 @@ Excluded for now:
 - split panes
 - command palette
 - search overlay
-- settings studio
 - multi-window UI
 
 ## UX Principles
@@ -42,10 +43,11 @@ Excluded for now:
 - `Ctrl+Shift+Tab` cycles backwards
 - `Ctrl+T` creates a session placeholder
 - `Ctrl+W` closes the active session when more than one exists
+- `Ctrl+,` opens the settings studio
 
 ## Accessibility Baseline
 
-- Session list is fully clickable and keyboard reachable
+- Session tabs and profile launchers are fully clickable and keyboard reachable
 - Status should not rely on color alone
 - Reduced motion should remain respected
 - The terminal surface stays visually dominant at all widths

@@ -1,0 +1,200 @@
+{
+  "$schema": "https://aka.ms/terminal-profiles-schema",
+  "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+  "copyFormatting": "all",
+  "theme": "Blueprint",
+  "themes": [
+    {
+      "name": "Graphite",
+      "window": {
+        "applicationTheme": "dark",
+        "useMica": true
+      },
+      "tab": {
+        "background": "#1c2633",
+        "unfocusedBackground": "#10161f",
+        "showCloseButton": "hover"
+      },
+      "tabRow": {
+        "background": "#0f141d",
+        "unfocusedBackground": "#0b1017"
+      }
+    },
+    {
+      "name": "Paperlight",
+      "window": {
+        "applicationTheme": "light",
+        "useMica": false
+      },
+      "tab": {
+        "background": "#e8eef7",
+        "unfocusedBackground": "#f6f8fb",
+        "showCloseButton": "hover"
+      },
+      "tabRow": {
+        "background": "#eef3f8",
+        "unfocusedBackground": "#f7f9fb"
+      }
+    },
+    {
+      "name": "Blueprint",
+      "window": {
+        "applicationTheme": "dark",
+        "useMica": false
+      },
+      "tab": {
+        "background": "#18273d",
+        "unfocusedBackground": "#101723",
+        "showCloseButton": "always"
+      },
+      "tabRow": {
+        "background": "#0e1320",
+        "unfocusedBackground": "#0a0f18"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "command": "newTab",
+      "keys": [
+        "ctrl+t"
+      ]
+    },
+    {
+      "command": "closeTab",
+      "keys": [
+        "ctrl+w"
+      ]
+    },
+    {
+      "command": "nextTab",
+      "keys": [
+        "ctrl+tab"
+      ]
+    },
+    {
+      "command": "prevTab",
+      "keys": [
+        "ctrl+shift+tab"
+      ]
+    },
+    {
+      "command": "openSettings",
+      "keys": [
+        "ctrl+,"
+      ]
+    }
+  ],
+  "profiles": {
+    "defaults": {
+      "fontFace": "Cascadia Mono",
+      "fontSize": 13.0,
+      "lineHeight": 1.22,
+      "cursorShape": "bar",
+      "opacity": 92.0
+    },
+    "list": [
+      {
+        "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+        "name": "PowerShell",
+        "icon": "PS",
+        "commandline": "pwsh.exe",
+        "startingDirectory": "%USERPROFILE%",
+        "hidden": false,
+        "tabColor": "#3b78ff",
+        "colorScheme": "Campbell"
+      },
+      {
+        "guid": "{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}",
+        "name": "Ubuntu",
+        "icon": "UB",
+        "commandline": "wsl.exe -d Ubuntu",
+        "startingDirectory": "~",
+        "hidden": false,
+        "tabColor": "#f0a355",
+        "colorScheme": "One Half Dark"
+      },
+      {
+        "guid": "{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}",
+        "name": "Azure Ops",
+        "icon": "AZ",
+        "commandline": "pwsh.exe -NoLogo -NoExit -Command kubectl config current-context",
+        "startingDirectory": "%USERPROFILE%/deploy",
+        "hidden": false,
+        "tabColor": "#2fbf9b",
+        "colorScheme": "Campbell"
+      }
+    ]
+  },
+  "schemes": [
+    {
+      "name": "Campbell",
+      "background": "#0c0c0c",
+      "foreground": "#f2f2f2",
+      "cursorColor": "#ffffff",
+      "selectionBackground": "#264f78",
+      "black": "#0c0c0c",
+      "red": "#c50f1f",
+      "green": "#13a10e",
+      "yellow": "#c19c00",
+      "blue": "#0037da",
+      "purple": "#881798",
+      "cyan": "#3a96dd",
+      "white": "#cccccc",
+      "brightBlack": "#767676",
+      "brightRed": "#e74856",
+      "brightGreen": "#16c60c",
+      "brightYellow": "#f9f1a5",
+      "brightBlue": "#3b78ff",
+      "brightPurple": "#b4009e",
+      "brightCyan": "#61d6d6",
+      "brightWhite": "#f2f2f2"
+    },
+    {
+      "name": "One Half Dark",
+      "background": "#282c34",
+      "foreground": "#dcdfe4",
+      "cursorColor": "#dcdfe4",
+      "selectionBackground": "#3e4452",
+      "black": "#282c34",
+      "red": "#e06c75",
+      "green": "#98c379",
+      "yellow": "#e5c07b",
+      "blue": "#61afef",
+      "purple": "#c678dd",
+      "cyan": "#56b6c2",
+      "white": "#dcdfe4",
+      "brightBlack": "#5a6374",
+      "brightRed": "#ff7b86",
+      "brightGreen": "#b4d88f",
+      "brightYellow": "#f4d399",
+      "brightBlue": "#83c7ff",
+      "brightPurple": "#d7a7f0",
+      "brightCyan": "#7ddce7",
+      "brightWhite": "#f4f7fb"
+    },
+    {
+      "name": "Nord",
+      "background": "#2e3440",
+      "foreground": "#eceff4",
+      "cursorColor": "#d8dee9",
+      "selectionBackground": "#434c5e",
+      "black": "#3b4252",
+      "red": "#bf616a",
+      "green": "#a3be8c",
+      "yellow": "#ebcb8b",
+      "blue": "#81a1c1",
+      "purple": "#b48ead",
+      "cyan": "#88c0d0",
+      "white": "#e5e9f0",
+      "brightBlack": "#4c566a",
+      "brightRed": "#d06f79",
+      "brightGreen": "#b1d196",
+      "brightYellow": "#f2d399",
+      "brightBlue": "#8cafd2",
+      "brightPurple": "#c39dc0",
+      "brightCyan": "#93ccdc",
+      "brightWhite": "#eceff4"
+    }
+  ]
+}

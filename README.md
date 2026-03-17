@@ -19,8 +19,8 @@ practical session management of Windows Terminal.
 The current prototype is intentionally narrow:
 
 - one large terminal surface
-- a simple top chrome
-- a right-side session rail
+- a restrained top chrome and tab strip
+- a WT-compatible settings studio
 - Rust HTTP/WebSocket contracts behind the UI
 
 ## Preview
@@ -31,18 +31,18 @@ The current prototype is intentionally narrow:
 
 What exists today:
 
-- a dark, minimal terminal window shell
-- one active terminal viewport powered by `xterm.js`
-- a right-side session list for switching between sessions
-- keyboard shortcuts for new session, close session, and session cycling
-- a Rust/Axum contract server for health, session creation, and WebSocket IO
+- a Windows Terminal-inspired shell with tabs, profile launchers, and settings studio
+- one active `xterm.js` viewport with live mock WebSocket input/output
+- WT-compatible `settings.json` loading and persistence at `config/webpty.settings.json`
+- keyboard shortcuts for new session, close session, session cycling, and settings
+- a Rust/Axum contract server for health, settings, sessions, and WebSocket transcript replay
 
 What does not exist yet:
 
 - real PTY integration
 - tab drag/drop
-- Windows Terminal-style settings UI
-- search, palette, and pane management
+- split panes
+- search, palette, and command surface parity
 
 ## Philosophy
 
@@ -52,6 +52,7 @@ The goal is:
 
 - a clean shell that feels like a real terminal app
 - clear session switching
+- compatible theme and profile definitions from WT-style settings
 - minimal chrome
 - a Rust core that can later own PTY lifecycle and transport
 
@@ -84,6 +85,9 @@ cargo run --manifest-path apps/server/Cargo.toml
 The frontend runs standalone as a UI prototype. In development mode it can also
 probe the Rust server through the Vite proxy.
 
+The server loads and saves the compatible settings subset from
+`config/webpty.settings.json`.
+
 ## Validate
 
 ```bash
@@ -111,14 +115,15 @@ cargo check --manifest-path apps/server/Cargo.toml
 ```text
 React UI
   ├─ top chrome
+  ├─ tab strip + profile launcher
   ├─ active terminal viewport
-  └─ right session rail
+  └─ settings studio
        ↓
 HTTP + WebSocket
        ↓
 Rust core
-  ├─ health and session endpoints
-  ├─ mock transport today
+  ├─ health, settings, and session endpoints
+  ├─ transcript replay mock transport today
   └─ real PTY transport later
 ```
 
@@ -130,9 +135,10 @@ Rust core
 ## Roadmap
 
 - [ ] Replace mock transport with a PTY-backed session layer
-- [ ] Stream live shell output over WebSocket
+- [x] Stream live mock shell output over WebSocket
 - [ ] Persist session state
-- [ ] Reintroduce Windows Terminal-style settings later, with a much closer UI
+- [x] Add a WT-compatible settings studio and theme switching
+- [ ] Reintroduce deeper Windows Terminal features such as panes, palette, and search
 
 ## Inspiration
 
