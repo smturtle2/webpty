@@ -19,14 +19,16 @@
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
+![webpty settings studio](./docs/assets/webpty-studio.png)
+
 ## 현재 상태
 
 현재 구현된 것:
 
 - Rust/Axum 서버 기반 PTY 세션 생성과 WebSocket 스트리밍
-- 화면 대부분을 터미널에 할당한 레이아웃과 우측 좁은 세션 레일
+- 검은 터미널이 화면 대부분을 차지하고, 우측에는 흰색 기반의 좁은 세션 레일 배치
 - WT 호환 `settings.json` 로드, 정규화, 저장
-- 프로필 실행, 기본 프로필 변경, 테마 전환
+- 슬라이드형 settings studio에서 프로필 실행, 기본 프로필 변경, 테마 전환
 - PTY 입력, 리사이즈, 출력 스트림 처리
 
 아직 없는 것:
@@ -46,7 +48,7 @@
 - 터미널 앱다운 밀도와 집중도
 - 유용한 Windows Terminal 설정 subset과의 호환성
 - PTY 수명주기와 스트리밍을 Rust 런타임이 직접 관리하는 구조
-- 대시보드형 UI가 아니라 터미널 중심 셸
+- 상단 툴바를 고정하지 않는 터미널 중심 셸
 
 ## 빠른 시작
 

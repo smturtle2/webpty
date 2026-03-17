@@ -45,7 +45,8 @@ Returns the current WT-compatible `settings.json` subset loaded from
 ### `PUT /api/settings`
 
 Accepts the same WT-compatible JSON subset and persists it back to
-`config/webpty.settings.json`.
+`config/webpty.settings.json`. Unsupported keys that travel alongside the
+supported subset are preserved on round-trip.
 
 ### `GET /api/sessions`
 
@@ -60,6 +61,10 @@ Accepted fields:
 - `profileId` or `profile_id`
 - `cwd`
 - `title`
+
+Notes:
+
+- requests targeting a `hidden: true` profile return `400`
 
 Returns:
 

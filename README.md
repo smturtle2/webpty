@@ -24,14 +24,16 @@ Rust PTY backend instead of a mock transcript transport.
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
+![webpty settings studio](./docs/assets/webpty-studio.png)
+
 ## Current Status
 
 Implemented today:
 
 - live PTY-backed sessions from a Rust/Axum server
-- one dominant terminal surface with a narrow right-side session rail
+- one dominant black terminal surface with a narrow white right-side session rail
 - WT-compatible `settings.json` loading, normalization, and persistence
-- profile launchers, default profile selection, and theme switching
+- profile launch, default profile selection, and theme switching in a slide-over settings studio
 - WebSocket input/output streaming and PTY resize handling
 
 Not implemented yet:
@@ -51,7 +53,7 @@ The goal is not line-by-line parity. The goal is:
 - a shell that feels like a terminal application first
 - compatibility with the useful Windows Terminal settings subset
 - a Rust runtime that owns PTY lifecycle, input, resize, and streaming
-- restrained chrome with a cleaner browser footprint than a dashboard-style UI
+- restrained chrome with no persistent top toolbar and a cleaner browser footprint than a dashboard-style UI
 
 ## Quick Start
 
@@ -113,9 +115,8 @@ and needs separate investigation.
 ```text
 React shell
   ├─ terminal stage
-  ├─ overlay controls
   ├─ right-side session rail
-  └─ settings studio
+  └─ slide-over settings studio
        ↓
 HTTP + WebSocket
        ↓

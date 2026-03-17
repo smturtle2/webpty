@@ -11,13 +11,13 @@
         "useMica": true
       },
       "tab": {
-        "background": "#1c2633",
-        "unfocusedBackground": "#10161f",
+        "background": "#ffffff",
+        "unfocusedBackground": "#f1f3f5",
         "showCloseButton": "hover"
       },
       "tabRow": {
-        "background": "#0f141d",
-        "unfocusedBackground": "#0b1017"
+        "background": "#d8dee5",
+        "unfocusedBackground": "#cfd6de"
       }
     },
     {
@@ -27,13 +27,13 @@
         "useMica": false
       },
       "tab": {
-        "background": "#e8eef7",
-        "unfocusedBackground": "#f6f8fb",
+        "background": "#ffffff",
+        "unfocusedBackground": "#f7f4ef",
         "showCloseButton": "hover"
       },
       "tabRow": {
-        "background": "#eef3f8",
-        "unfocusedBackground": "#f7f9fb"
+        "background": "#e8ddd0",
+        "unfocusedBackground": "#ddd2c6"
       }
     },
     {
@@ -43,13 +43,13 @@
         "useMica": false
       },
       "tab": {
-        "background": "#18273d",
-        "unfocusedBackground": "#101723",
+        "background": "#ffffff",
+        "unfocusedBackground": "#f4f7fb",
         "showCloseButton": "always"
       },
       "tabRow": {
-        "background": "#0e1320",
-        "unfocusedBackground": "#0a0f18"
+        "background": "#dce8f5",
+        "unfocusedBackground": "#cfdff0"
       }
     }
   ],

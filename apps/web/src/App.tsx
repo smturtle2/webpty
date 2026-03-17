@@ -77,6 +77,12 @@ function App() {
   ].filter((shortcut) => shortcut.keys.length > 0)
   const canConnect = remoteReady && serverHealth.status === 'ok'
   const isDraftDirty = settingsDraft !== formatSettingsJson(settings)
+  const runtimeLabel = canConnect
+    ? connectionState === 'live'
+      ? 'live runtime'
+      : connectionState
+    : 'demo mode'
+  const runtimeMessage = isBooting ? 'Syncing runtime contracts…' : serverHealth.message
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -284,6 +290,12 @@ function App() {
   }
 
   const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === 'Escape' && isSettingsOpen) {
+      event.preventDefault()
+      setIsSettingsOpen(false)
+      return
+    }
+
     if (isTypingTarget(event.target)) {
       return
     }
@@ -397,18 +409,13 @@ function App() {
   }
 
   return (
-    <main
-      className={`terminal-app ${isSettingsOpen ? 'is-studio-open' : ''}`}
-      style={themeVars(uiTheme)}
-    >
-      <div className="shell-noise" />
-
+    <main className="terminal-app" style={themeVars(uiTheme)}>
       <section className="terminal-shell">
-        <section className="viewport-stage">
+        <section className="viewport-stage" aria-label="Terminal workspace">
           <div className="terminal-stage">
             <TerminalViewport
               key={`${activeSession.id}-${canConnect ? 'live' : 'offline'}`}
-              active={true}
+              active={!isSettingsOpen}
               canConnect={canConnect}
               cursorShape={activeProfile.cursorShape}
               fallbackLines={activeSession.previewLines}
@@ -421,84 +428,13 @@ function App() {
               sessionId={activeSession.id}
             />
 
-            <header className="stage-toolbar">
-              <div className="stage-cluster">
-                <div className="stage-brand">
-                  <span className="app-mark">wt</span>
-                  <div>
-                    <strong>webpty</strong>
-                    <p>
-                      {activeSession.title} · {activeProfile.name}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="toolbar-copy">
-                  <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
-                    {canConnect ? 'pty online' : 'local fallback'}
-                  </span>
-                  <span
-                    className={`status-pill ${
-                      connectionState === 'live' ? 'is-accent' : 'subtle'
-                    }`}
-                  >
-                    {connectionState === 'live' ? 'streaming' : connectionState}
-                  </span>
-                  <span className="status-pill subtle">{themeName}</span>
-                </div>
-              </div>
-
-              <div className="toolbar-group">
-                <button type="button" className="toolbar-button" onClick={() => void createSession()}>
-                  New
-                </button>
-                <button
-                  type="button"
-                  className="toolbar-button ghost"
-                  onClick={() => setIsSettingsOpen((current) => !current)}
-                >
-                  {isSettingsOpen ? 'Hide studio' : 'Studio'}
-                </button>
-              </div>
-            </header>
-
-            <div className="stage-banner" aria-label="Session summary">
-              <div className="banner-block">
-                <span className="header-label">Session</span>
-                <strong>{activeSession.title}</strong>
-                <span>{activeProfile.commandline ?? 'Default shell'}</span>
-              </div>
-
-              <div className="banner-block">
-                <span className="header-label">Theme</span>
-                <strong>{themeName}</strong>
-                <span>
-                  {activeScheme.name} · {Math.round(activeProfile.opacity ?? 100)}% opacity
-                </span>
-              </div>
-
-              <div className="banner-block">
-                <span className="header-label">Working directory</span>
-                <strong>{activeSession.cwd}</strong>
-                <span>{serverHealth.websocketPath}</span>
-              </div>
-            </div>
-
-            <footer className="stage-footer">
-              <div className="footer-copy">
-                <span>{isBooting ? 'Syncing runtime contracts…' : serverHealth.message}</span>
-                <span>{`${sessions.length} tabs`}</span>
-                <span>{activeSession.status}</span>
-              </div>
-
-              <div className="footer-shortcuts">
-                {shortcutSummary.map((shortcut) => (
-                  <span key={`${shortcut.command}-${shortcut.keys}`} className="shortcut-pill">
-                    {shortcut.command}: {shortcut.keys}
-                  </span>
-                ))}
-              </div>
-            </footer>
+            <button
+              type="button"
+              className={`settings-scrim ${isSettingsOpen ? 'is-open' : ''}`}
+              aria-hidden={!isSettingsOpen}
+              tabIndex={isSettingsOpen ? 0 : -1}
+              onClick={() => setIsSettingsOpen(false)}
+            />
 
             <aside
               className={`settings-drawer ${isSettingsOpen ? 'is-open' : ''}`}
@@ -506,25 +442,55 @@ function App() {
             >
               <div className="drawer-header">
                 <div>
-                  <span className="header-label">Studio</span>
-                  <strong>Windows Terminal settings</strong>
-                  <p>Theme, profile, and settings.json controls stay compatible with the WT subset.</p>
+                  <span className="header-label">Windows Terminal subset</span>
+                  <strong>Profiles and theme</strong>
+                  <p>{runtimeMessage}</p>
                 </div>
-                <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
-                  {saveState === 'saving'
-                    ? 'saving'
-                    : saveState === 'saved'
-                      ? 'saved'
-                      : saveState === 'error'
-                        ? 'error'
-                        : 'idle'}
-                </span>
+                <div className="drawer-header-actions">
+                  <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
+                    {runtimeLabel}
+                  </span>
+                  <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
+                    {saveState === 'saving'
+                      ? 'saving'
+                      : saveState === 'saved'
+                        ? 'saved'
+                        : saveState === 'error'
+                          ? 'error'
+                          : 'idle'}
+                  </span>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={() => setIsSettingsOpen(false)}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
+
+              <section className="drawer-overview" aria-label="Studio overview">
+                <article className="summary-card">
+                  <span className="header-label">Default profile</span>
+                  <strong>{defaultProfile.name}</strong>
+                  <span>{defaultProfile.commandline ?? 'Default shell'}</span>
+                </article>
+                <article className="summary-card">
+                  <span className="header-label">Theme</span>
+                  <strong>{themeName}</strong>
+                  <span>{activeScheme.name}</span>
+                </article>
+                <article className="summary-card">
+                  <span className="header-label">Active session</span>
+                  <strong>{activeSession.title}</strong>
+                  <span>{activeSession.cwd}</span>
+                </article>
+              </section>
 
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Appearance</strong>
-                  <p>Apply WT `themes[]` live to the shell chrome, rail, and stage overlay.</p>
+                  <p>Apply WT `themes[]` to the rail accent and shell chrome without adding top UI.</p>
                 </div>
 
                 <div className="theme-grid">
@@ -542,8 +508,8 @@ function App() {
                         className={`theme-chip ${theme.name === themeName ? 'is-active' : ''}`}
                         style={
                           {
-                            '--chip-accent': previewTheme.accent,
-                            '--chip-tone': previewTheme.chromeAlt,
+                            '--chip-accent': previewTheme.chrome,
+                            '--chip-tone': previewTheme.panel,
                           } as CSSProperties
                         }
                         onClick={() => void handleThemeApply(theme.name)}
@@ -559,7 +525,7 @@ function App() {
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Profiles</strong>
-                  <p>Launch profiles immediately or promote one as the WT-compatible default profile.</p>
+                  <p>Launch a profile immediately or promote it to the WT-compatible default.</p>
                 </div>
 
                 <div className="profile-grid">
@@ -647,21 +613,34 @@ function App() {
                   </button>
                 </div>
               </section>
+
+              <section className="drawer-shortcuts" aria-label="Keyboard shortcuts">
+                {shortcutSummary.map((shortcut) => (
+                  <span key={`${shortcut.command}-${shortcut.keys}`} className="shortcut-pill">
+                    {shortcut.command}: {shortcut.keys}
+                  </span>
+                ))}
+              </section>
             </aside>
           </div>
         </section>
 
         <aside className="session-rail" aria-label="Session rail">
-          <div className="rail-top">
+          <div className="rail-head">
             <button
               type="button"
-              className="rail-emblem"
+              className="rail-brand"
               onClick={() => setIsSettingsOpen((current) => !current)}
               aria-label="Open settings studio"
             >
               WT
             </button>
-            <span className="rail-caption">Sessions</span>
+            <span className={`rail-connection is-${connectionState}`} aria-hidden="true" />
+          </div>
+
+          <div className="rail-caption" aria-label="Session count">
+            <strong>{sessions.length}</strong>
+            <span>tabs</span>
           </div>
 
           <div className="rail-list" role="tablist" aria-label="Sessions">
@@ -704,22 +683,7 @@ function App() {
             })}
           </div>
 
-          <div className="rail-launchers" aria-label="Profile launcher">
-            {visibleProfiles.map((profile) => (
-              <button
-                key={profile.id}
-                type="button"
-                className={`rail-profile ${profile.id === activeProfile.id ? 'is-current' : ''}`}
-                onClick={() => void createSession(profile.id)}
-                title={`New ${profile.name} tab`}
-              >
-                <span>{profileBadge(profile)}</span>
-                <small>{profile.name}</small>
-              </button>
-            ))}
-          </div>
-
-          <div className="rail-actions">
+          <div className="rail-footer">
             <button
               type="button"
               className="rail-action"
@@ -730,11 +694,11 @@ function App() {
             </button>
             <button
               type="button"
-              className="rail-action"
+              className={`rail-action ${isSettingsOpen ? 'is-active' : ''}`}
               aria-label="Open settings"
               onClick={() => setIsSettingsOpen((current) => !current)}
             >
-              ⚙
+              cfg
             </button>
           </div>
         </aside>

@@ -20,6 +20,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 use tokio::sync::{RwLock, broadcast};
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
@@ -275,6 +276,8 @@ struct WindowsTerminalSettings {
     profiles: WtProfiles,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     schemes: Vec<WtColorScheme>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -301,6 +304,8 @@ struct WtTheme {
     tab: Option<WtTabTheme>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tab_row: Option<WtTabRowTheme>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,6 +315,8 @@ struct WtWindowTheme {
     application_theme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     use_mica: Option<bool>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,6 +328,8 @@ struct WtTabTheme {
     unfocused_background: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     show_close_button: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -330,6 +339,8 @@ struct WtTabRowTheme {
     background: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     unfocused_background: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -341,6 +352,8 @@ struct WtAction {
     keys: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -349,6 +362,8 @@ struct WtProfiles {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     defaults: Option<WtProfileDefaults>,
     list: Vec<WtProfile>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -364,6 +379,8 @@ struct WtProfileDefaults {
     cursor_shape: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     opacity: Option<f64>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,6 +403,8 @@ struct WtProfile {
     tab_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color_scheme: Option<SchemeSelection>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -442,6 +461,8 @@ struct WtColorScheme {
     bright_cyan: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bright_white: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
 }
 
 struct LaunchPlan {
@@ -609,6 +630,12 @@ async fn create_session(
         StatusCode::BAD_REQUEST,
         format!("profile `{profile_id}` is not defined in settings"),
     ))?;
+    if profile.hidden.unwrap_or(false) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("profile `{}` is hidden and cannot be launched", profile.name),
+        ));
+    }
     let title = payload
         .title
         .unwrap_or_else(|| format!("{}-tab", slugify(&profile.name)));
@@ -1325,48 +1352,60 @@ fn default_settings() -> WindowsTerminalSettings {
                 window: Some(WtWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: Some(true),
+                    extra: JsonMap::new(),
                 }),
                 tab: Some(WtTabTheme {
-                    background: Some("#1c2633".to_string()),
-                    unfocused_background: Some("#10161f".to_string()),
+                    background: Some("#ffffff".to_string()),
+                    unfocused_background: Some("#f1f3f5".to_string()),
                     show_close_button: Some("hover".to_string()),
+                    extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#0f141d".to_string()),
-                    unfocused_background: Some("#0b1017".to_string()),
+                    background: Some("#d8dee5".to_string()),
+                    unfocused_background: Some("#cfd6de".to_string()),
+                    extra: JsonMap::new(),
                 }),
+                extra: JsonMap::new(),
             },
             WtTheme {
                 name: "Paperlight".to_string(),
                 window: Some(WtWindowTheme {
                     application_theme: Some("light".to_string()),
                     use_mica: None,
+                    extra: JsonMap::new(),
                 }),
                 tab: Some(WtTabTheme {
-                    background: Some("#e8eef7".to_string()),
-                    unfocused_background: Some("#f6f8fb".to_string()),
+                    background: Some("#ffffff".to_string()),
+                    unfocused_background: Some("#f7f4ef".to_string()),
                     show_close_button: Some("hover".to_string()),
+                    extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#eef3f8".to_string()),
-                    unfocused_background: Some("#f7f9fb".to_string()),
+                    background: Some("#e8ddd0".to_string()),
+                    unfocused_background: Some("#ddd2c6".to_string()),
+                    extra: JsonMap::new(),
                 }),
+                extra: JsonMap::new(),
             },
             WtTheme {
                 name: "Blueprint".to_string(),
                 window: Some(WtWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: None,
+                    extra: JsonMap::new(),
                 }),
                 tab: Some(WtTabTheme {
-                    background: Some("#18273d".to_string()),
-                    unfocused_background: Some("#101723".to_string()),
+                    background: Some("#ffffff".to_string()),
+                    unfocused_background: Some("#f4f7fb".to_string()),
                     show_close_button: Some("always".to_string()),
+                    extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#0e1320".to_string()),
-                    unfocused_background: Some("#0a0f18".to_string()),
+                    background: Some("#dce8f5".to_string()),
+                    unfocused_background: Some("#cfdff0".to_string()),
+                    extra: JsonMap::new(),
                 }),
+                extra: JsonMap::new(),
             },
         ],
         actions: vec![
@@ -1374,26 +1413,31 @@ fn default_settings() -> WindowsTerminalSettings {
                 command: Some("newTab".to_string()),
                 keys: vec!["ctrl+t".to_string()],
                 name: None,
+                extra: JsonMap::new(),
             },
             WtAction {
                 command: Some("closeTab".to_string()),
                 keys: vec!["ctrl+w".to_string()],
                 name: None,
+                extra: JsonMap::new(),
             },
             WtAction {
                 command: Some("nextTab".to_string()),
                 keys: vec!["ctrl+tab".to_string()],
                 name: None,
+                extra: JsonMap::new(),
             },
             WtAction {
                 command: Some("prevTab".to_string()),
                 keys: vec!["ctrl+shift+tab".to_string()],
                 name: None,
+                extra: JsonMap::new(),
             },
             WtAction {
                 command: Some("openSettings".to_string()),
                 keys: vec!["ctrl+,".to_string()],
                 name: None,
+                extra: JsonMap::new(),
             },
         ],
         profiles: WtProfiles {
@@ -1403,6 +1447,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 line_height: Some(1.22),
                 cursor_shape: Some("bar".to_string()),
                 opacity: Some(92.0),
+                extra: JsonMap::new(),
             }),
             list: vec![
                 WtProfile {
@@ -1415,6 +1460,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     hidden: Some(false),
                     tab_color: Some("#3b78ff".to_string()),
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    extra: JsonMap::new(),
                 },
                 WtProfile {
                     guid: Some("{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}".to_string()),
@@ -1426,6 +1472,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     hidden: Some(false),
                     tab_color: Some("#f0a355".to_string()),
                     color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
+                    extra: JsonMap::new(),
                 },
                 WtProfile {
                     guid: Some("{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}".to_string()),
@@ -1440,8 +1487,10 @@ fn default_settings() -> WindowsTerminalSettings {
                     hidden: Some(false),
                     tab_color: Some("#2fbf9b".to_string()),
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    extra: JsonMap::new(),
                 },
             ],
+            extra: JsonMap::new(),
         },
         schemes: vec![
             WtColorScheme {
@@ -1466,6 +1515,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 bright_purple: Some("#b4009e".to_string()),
                 bright_cyan: Some("#61d6d6".to_string()),
                 bright_white: Some("#f2f2f2".to_string()),
+                extra: JsonMap::new(),
             },
             WtColorScheme {
                 name: "One Half Dark".to_string(),
@@ -1489,6 +1539,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 bright_purple: Some("#d7a7f0".to_string()),
                 bright_cyan: Some("#7ddce7".to_string()),
                 bright_white: Some("#f4f7fb".to_string()),
+                extra: JsonMap::new(),
             },
             WtColorScheme {
                 name: "Nord".to_string(),
@@ -1512,7 +1563,9 @@ fn default_settings() -> WindowsTerminalSettings {
                 bright_purple: Some("#c39dc0".to_string()),
                 bright_cyan: Some("#93ccdc".to_string()),
                 bright_white: Some("#eceff4".to_string()),
+                extra: JsonMap::new(),
             },
         ],
+        extra: JsonMap::new(),
     }
 }

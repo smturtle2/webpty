@@ -103,47 +103,44 @@ export function resolveUiTheme(
 ): UiThemeTokens {
   const selectedTheme = resolveTheme(settings, appearance)
   const scheme = resolveScheme(settings, profile, appearance)
-  const applicationTheme = selectedTheme?.window?.applicationTheme ?? appearance
-  const isLight = applicationTheme === 'light'
-  const accent = profile.tabColor ?? scheme.brightBlue ?? scheme.blue ?? '#4cc2ff'
-  const tabStrip = selectedTheme?.tabRow?.background ?? (isLight ? '#f4f6f9' : '#131821')
-  const window = mix(tabStrip, isLight ? '#ffffff' : '#0c1016', isLight ? 0.72 : 0.8)
-  const chrome = mix(tabStrip, isLight ? '#ffffff' : '#101621', isLight ? 0.84 : 0.68)
-  const panel =
+  const accent =
+    profile.tabColor ??
+    scheme.brightBlue ??
+    scheme.blue ??
+    '#4cc2ff'
+  const themeSeed =
+    selectedTheme?.tabRow?.background ??
+    selectedTheme?.tab?.background ??
     selectedTheme?.tab?.unfocusedBackground ??
-    mix(tabStrip, isLight ? '#ffffff' : '#0f151d', isLight ? 0.88 : 0.72)
-  const surface = mix(scheme.background, isLight ? '#ffffff' : '#0e131a', isLight ? 0.84 : 0.76)
-  const border = isLight ? 'rgba(17, 24, 39, 0.12)' : 'rgba(255, 255, 255, 0.08)'
-  const borderStrong = isLight ? 'rgba(17, 24, 39, 0.22)' : 'rgba(255, 255, 255, 0.18)'
-  const text = isLight ? '#111827' : '#edf3fa'
-  const textSoft = isLight ? '#485569' : '#afbbc8'
-  const textMuted = isLight ? '#69778b' : '#79889a'
+    '#f3f3f3'
+  const chrome = mix(themeSeed, '#ffffff', 0.12)
+  const panel = mix(themeSeed, '#ffffff', 0.08)
+  const window = mix(scheme.background, '#000000', 0.92)
+  const surface = mix(scheme.background, '#000000', 0.86)
 
   return {
-    appBackground: isLight ? '#edf2f6' : '#080c11',
-    backgroundGlow: alpha(accent, isLight ? 0.22 : 0.16),
+    appBackground: '#000000',
+    backgroundGlow: 'transparent',
     window,
     chrome,
-    chromeAlt: tabStrip,
+    chromeAlt: '#ffffff',
     surface,
     panel,
     terminalBackground: scheme.background,
     terminalForeground: scheme.foreground,
-    tabActive: selectedTheme?.tab?.background ?? mix(accent, window, isLight ? 0.16 : 0.28),
-    tabInactive: selectedTheme?.tab?.unfocusedBackground ?? panel,
-    tabStrip,
-    border,
-    borderStrong,
-    text,
-    textSoft,
-    textMuted,
+    tabActive: '#ffffff',
+    tabInactive: '#ffffff',
+    tabStrip: chrome,
+    border: 'rgba(17, 17, 17, 0.12)',
+    borderStrong: 'rgba(17, 17, 17, 0.32)',
+    text: '#111111',
+    textSoft: '#575757',
+    textMuted: '#8a8a8a',
     accent,
-    accentSoft: alpha(accent, isLight ? 0.18 : 0.28),
+    accentSoft: alpha(accent, 0.16),
     signal: scheme.yellow ?? accent,
     success: scheme.green ?? '#6fd19d',
-    shadow: isLight
-      ? '0 24px 80px rgba(15, 23, 42, 0.16)'
-      : '0 26px 90px rgba(0, 0, 0, 0.48)',
+    shadow: '0 18px 48px rgba(0, 0, 0, 0.24)',
   }
 }
 

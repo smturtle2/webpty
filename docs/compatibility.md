@@ -57,9 +57,11 @@ Action fields currently mapped by the frontend:
 ## Runtime Behavior
 
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
+- `POST /api/sessions` rejects profiles marked with `hidden: true`
 - profile launch uses the WT `commandline` when possible
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and prints a session banner
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session
+- unsupported WT keys are preserved when the supported subset is loaded and saved again
 
 ## Known Gaps
 
@@ -72,5 +74,6 @@ Action fields currently mapped by the frontend:
 ## Practical Expectation
 
 You should expect the same theme/profile JSON to travel between Windows
-Terminal and `webpty` for the supported subset. You should not expect full
-feature parity with Windows Terminal yet.
+Terminal and `webpty` for the supported subset, without unrelated keys being
+discarded on save. You should not expect full feature parity with Windows
+Terminal yet.

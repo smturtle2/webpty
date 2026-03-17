@@ -16,10 +16,9 @@ The Windows Terminal reference points are:
 Included:
 
 - one dominant terminal viewport
-- thin overlay controls
 - narrow right-side session rail
-- profile launchers
-- a WT-compatible settings studio
+- minimal rail actions
+- a slide-over WT-compatible settings studio
 - keyboard session switching and creation
 - live PTY transport behind the UI
 
@@ -35,7 +34,7 @@ Excluded for now:
 
 1. The terminal should own the screen.
 2. Session switching should stay visible but narrow.
-3. The shell should feel closer to Windows Terminal than to a web dashboard.
+3. The shell should feel closer to Windows Terminal than to a web dashboard, with no persistent top toolbar.
 4. Settings should stay editable in JSON and approachable in the UI.
 5. Feature growth should follow WT compatibility, not random browser-shell sprawl.
 
