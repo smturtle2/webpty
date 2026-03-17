@@ -2,57 +2,41 @@
 
 ## Frontend State Shapes
 
-### TabSummary
+### `ProfileDefinition`
 
 - `id: string`
-- `title: string`
-- `profileId: string`
+- `name: string`
 - `accent: string`
-- `hasBell: boolean`
-- `isDirty: boolean`
-- `lastUsedAt: string`
+- `icon: string`
+- `shell: string`
 
-### PaneSummary
+### `SessionItem`
 
 - `id: string`
-- `sessionId: string`
-- `profileId: string`
-- `cwd: string`
 - `title: string`
+- `profileId: string`
 - `status: "running" | "idle" | "attention"`
-- `cols: number`
-- `rows: number`
-
-### LayoutNode
-
-- `type: "pane"` with `paneId`
-- `type: "split"` with `axis`, `ratio`, `children`
-
-### OverlayState
-
-- `none`
-- `palette`
-- `tab-switcher`
-- `search`
-- `settings`
+- `hasActivity: boolean`
+- `lastUsedLabel: string`
+- `cwd: string`
+- `previewLines: string[]`
 
 ## HTTP Endpoints
 
 ### `GET /api/health`
 
-Returns runtime health and feature flags.
-
-### `GET /api/blueprint`
-
-Returns the demo layout, profiles, actions, and settings categories used by the prototype UI.
+Returns runtime health and feature flags for the frontend shell.
 
 ### `POST /api/sessions`
 
-Creates a session and returns:
+Creates a session record and returns:
 
 - `session`
 - `tab`
 - `pane`
+
+The frontend currently only needs the session portion conceptually, but the
+server contract is still shaped for later PTY expansion.
 
 ## WebSocket Protocol
 
@@ -77,6 +61,6 @@ Endpoint: `GET /ws/:session_id`
 
 ## Prototype Assumptions
 
-- The initial server may use seeded or mocked session output.
-- Real PTY integration is a next step, but the API is already shaped around session IO.
-- Frontend rendering should not depend on a live server to display the workspace shell.
+- The UI does not require a live backend to render.
+- The backend is still a mock transport layer.
+- Real PTY transport is the next major backend milestone.

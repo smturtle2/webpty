@@ -2,88 +2,58 @@
 
 # webpty
 
-**A UI/UX-first web terminal workspace powered by Rust**
+**A simple Rust-backed terminal app for the browser**
 
 [![GitHub stars](https://img.shields.io/github/stars/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/issues)
 [![Rust](https://img.shields.io/badge/Rust-1.94+-000000?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-19-20232A?style=for-the-badge&logo=react)](https://react.dev/)
-[![Axum](https://img.shields.io/badge/Axum-0.8-111111?style=for-the-badge)](https://github.com/tokio-rs/axum)
 
 [한국어 README](./README.ko.md)
 
 </div>
 
-`webpty` is a browser-first terminal project inspired by the best workflows in
-Windows Terminal and rebuilt around one priority: **great UI/UX before
-everything else**.
+`webpty` is a browser-first terminal app inspired by the visual restraint and
+practical session management of Windows Terminal.
 
-Instead of starting from a plain terminal viewport, `webpty` starts from the
-full workspace experience:
+The current prototype is intentionally narrow:
 
-- dense tab chrome
-- multi-pane layouts
-- a shared command palette / tab switcher interaction model
-- pane-aware search
-- a settings studio that feels explorable, not just editable
+- one large terminal surface
+- a simple top chrome
+- a right-side session rail
+- Rust HTTP/WebSocket contracts behind the UI
 
 ## Preview
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
-## Why
-
-Modern terminal work is not just “render text fast”. It is:
-
-- switching between active sessions without losing context
-- understanding state at a glance
-- splitting work across panes without visual chaos
-- discovering commands and settings without memorizing everything
-
-`webpty` treats the terminal as a **workspace product**, not only a renderer.
-
 ## Current Status
-
-`webpty` is currently an early but working prototype with:
-
-- a React/Vite frontend focused on shell chrome and interaction design
-- a Rust/Axum backend skeleton with HTTP and WebSocket contracts
-- research and runtime documents to keep UI and backend aligned
 
 What exists today:
 
-- custom app shell and title area
-- tab row with profile/state cues
-- split-pane workspace
-- reusable command palette and MRU tab switcher
-- search overlay attached to the active pane
-- settings studio prototype
-- mock terminal viewports using `xterm.js`
-- Rust session contract server for health, blueprint, session creation, and WebSocket IO
+- a dark, minimal terminal window shell
+- one active terminal viewport powered by `xterm.js`
+- a right-side session list for switching between sessions
+- keyboard shortcuts for new session, close session, and session cycling
+- a Rust/Axum contract server for health, session creation, and WebSocket IO
 
-What is not done yet:
+What does not exist yet:
 
 - real PTY integration
-- persistent settings and profile import
-- broadcast input
-- native window / quake mode
-- multi-window orchestration
+- tab drag/drop
+- Windows Terminal-style settings UI
+- search, palette, and pane management
 
-## Tech Stack
+## Philosophy
 
-### Frontend
+The goal right now is not “every terminal feature”.
 
-- React 19
-- TypeScript
-- Vite
-- `xterm.js`
+The goal is:
 
-### Backend
-
-- Rust
-- Axum
-- Tokio
-- WebSocket contracts for session IO
+- a clean shell that feels like a real terminal app
+- clear session switching
+- minimal chrome
+- a Rust core that can later own PTY lifecycle and transport
 
 ## Quick Start
 
@@ -111,8 +81,8 @@ npm run dev:web
 cargo run --manifest-path apps/server/Cargo.toml
 ```
 
-The frontend works standalone as a UI prototype. In development mode it can
-also probe the Rust server through the Vite proxy.
+The frontend runs standalone as a UI prototype. In development mode it can also
+probe the Rust server through the Vite proxy.
 
 ## Validate
 
@@ -127,8 +97,8 @@ cargo check --manifest-path apps/server/Cargo.toml
 ```text
 .
 ├── apps/
-│   ├── server/   # Axum contract server and WebSocket mock transport
-│   └── web/      # React/Vite UI prototype
+│   ├── server/   # Axum contract server and mock session transport
+│   └── web/      # React/Vite terminal UI
 ├── docs/
 │   ├── research-spec.md
 │   ├── runtime-contracts.md
@@ -136,28 +106,21 @@ cargo check --manifest-path apps/server/Cargo.toml
 └── README.md
 ```
 
-## Architecture Direction
-
-`webpty` is intentionally split into a browser UI and a Rust core:
+## Architecture
 
 ```text
 React UI
-  ├─ workspace shell
-  ├─ tabs / panes / overlays
-  ├─ settings studio
-  └─ terminal surface
+  ├─ top chrome
+  ├─ active terminal viewport
+  └─ right session rail
        ↓
-HTTP + WebSocket contracts
+HTTP + WebSocket
        ↓
 Rust core
-  ├─ session lifecycle
-  ├─ PTY transport
-  ├─ layout/runtime state
-  └─ settings and action dispatch
+  ├─ health and session endpoints
+  ├─ mock transport today
+  └─ real PTY transport later
 ```
-
-This keeps the UX layer flexible while reserving Rust for the parts that should
-eventually own session correctness and performance.
 
 ## Documentation
 
@@ -166,37 +129,14 @@ eventually own session correctness and performance.
 
 ## Roadmap
 
-- [ ] Replace mock transport with a real PTY-backed session layer
-- [ ] Add live terminal IO over WebSocket
-- [ ] Persist tabs, panes, and profile state
-- [ ] Import a useful subset of Windows Terminal settings
-- [ ] Split the palette/settings UI into lazy-loaded bundles
-- [ ] Add drag-and-drop tab and pane interactions
-
-## Design Principles
-
-- **Keyboard-first, not keyboard-only**: every major action should be fast from the keyboard and still clear with a pointer.
-- **State must stay visible**: tabs and panes should communicate status without opening secondary UI.
-- **One overlay grammar**: command palette, tab switcher, and related overlays should feel like one system.
-- **Settings should teach the product**: navigation and previews matter as much as the raw values.
+- [ ] Replace mock transport with a PTY-backed session layer
+- [ ] Stream live shell output over WebSocket
+- [ ] Persist session state
+- [ ] Reintroduce Windows Terminal-style settings later, with a much closer UI
 
 ## Inspiration
 
-`webpty` is strongly informed by:
-
 - [microsoft/terminal](https://github.com/microsoft/terminal)
-- the Windows Terminal command palette and advanced tab switcher specs
-- terminal products that treat layout and command discovery as first-class UX concerns
 
-## Contributing
-
-The repo is still early, so the most useful contributions right now are:
-
-- UX feedback on layout and interaction flow
-- backend API and PTY architecture feedback
-- accessibility review for overlays, focus movement, and status signaling
-
----
-
-If you care about terminal UX, session ergonomics, and browser-native tooling,
-`webpty` is aiming directly at that problem space.
+The current app is intentionally simpler than Windows Terminal. The reference
+is mostly about **tone, density, and terminal-app feel**, not feature parity.

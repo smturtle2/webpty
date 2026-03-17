@@ -1,23 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
 :root {
-  --bg: #07090c;
-  --panel: rgba(12, 15, 20, 0.84);
-  --panel-alt: rgba(15, 19, 25, 0.72);
-  --text: #f3f7fa;
-  --text-soft: #aeb7c2;
-  --text-muted: #6f7c8a;
+  --bg: #0c0f14;
+  --window: #11151b;
+  --chrome: #171c23;
+  --surface: #101419;
+  --text: #eef2f7;
+  --text-soft: #aeb7c1;
+  --text-muted: #7b8794;
   --line: rgba(255, 255, 255, 0.08);
-  --line-strong: rgba(255, 255, 255, 0.18);
-  --signal: #ff9b54;
-  --mint: #7ce2ad;
-  --ice: #71c6ff;
-  --shadow-lg:
-    0 24px 70px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --display: 'Fraunces', serif;
-  --sans: 'IBM Plex Sans', sans-serif;
-  --mono: 'IBM Plex Mono', monospace;
+  --line-strong: rgba(255, 255, 255, 0.16);
+  --signal: #f0a355;
+  --mint: #6fc7a2;
+  --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.35);
+  --sans:
+    'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans', sans-serif;
+  --mono:
+    'Cascadia Mono', 'Cascadia Code', 'IBM Plex Mono', ui-monospace, monospace;
   color: var(--text);
   background: var(--bg);
   font-family: var(--sans);
@@ -39,24 +38,7 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at 15% 15%, rgba(255, 155, 84, 0.13), transparent 24rem),
-    radial-gradient(circle at 82% 12%, rgba(113, 198, 255, 0.16), transparent 20rem),
-    radial-gradient(circle at 78% 84%, rgba(124, 226, 173, 0.08), transparent 18rem),
-    linear-gradient(180deg, #0a0d11, #050709 68%);
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-  background-size: 3rem 3rem;
-  mask-image: radial-gradient(circle at center, black, transparent 80%);
-  opacity: 0.28;
+  background: #0c0f14;
 }
 
 button,
@@ -64,21 +46,13 @@ input {
   font: inherit;
 }
 
-h1,
-h2,
-h3,
-strong {
+strong,
+b {
   color: var(--text);
 }
 
-h1,
-h2 {
-  font-family: var(--display);
-  letter-spacing: -0.03em;
-}
-
 p {
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 a {
@@ -86,7 +60,7 @@ a {
 }
 
 ::selection {
-  background: rgba(113, 198, 255, 0.32);
+  background: rgba(118, 183, 240, 0.24);
 }
 
 @media (prefers-reduced-motion: reduce) {
