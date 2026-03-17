@@ -1,15 +1,16 @@
 [package]
-name = "server"
+name = "webpty"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 axum = { version = "0.8", features = ["http1", "json", "tokio", "ws"] }
 futures-util = "0.3"
+include_dir = "0.7"
+mime_guess = "2"
 portable-pty = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 shlex = "1"
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["cors"] }
 uuid = { version = "1", features = ["serde", "v4"] }

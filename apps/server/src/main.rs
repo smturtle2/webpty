@@ -3,27 +3,42 @@ use std::{
     env, fs,
     io::{Read, Write},
     path::{Path, PathBuf},
+    process::Stdio,
     sync::{Arc, Mutex, RwLock as StdRwLock},
     thread,
 };
 
 use axum::{
     Json, Router,
+    body::Body,
     extract::{
         Path as AxumPath, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::StatusCode,
+    http::{
+        StatusCode, Uri,
+        header::{self, HeaderValue},
+    },
     response::{IntoResponse, Response},
     routing::{delete, get},
 };
 use futures_util::{SinkExt, StreamExt};
-use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use include_dir::{Dir, include_dir};
+use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use tokio::sync::{RwLock, broadcast};
-use tower_http::cors::CorsLayer;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, BufReader},
+    process::{Child as TokioChild, Command as TokioCommand},
+    sync::{RwLock, broadcast},
+};
 use uuid::Uuid;
+
+const DEFAULT_HOST: &str = "127.0.0.1";
+const DEFAULT_PORT: u16 = 3001;
+const DEFAULT_SETTINGS_PATH: &str = "config/webpty.settings.json";
+const LOCALHOST_RUN_DESTINATION: &str = "nokey@localhost.run";
+static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
 #[derive(Clone)]
 struct AppState {
@@ -40,8 +55,67 @@ struct SessionState {
 struct SessionRuntime {
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    child: Arc<Mutex<Box<dyn Child + Send>>>,
+    killer: Arc<Mutex<Box<dyn ChildKiller + Send + Sync>>>,
     events: broadcast::Sender<String>,
+}
+
+#[derive(Debug, Clone)]
+struct UpOptions {
+    host: String,
+    port: u16,
+    settings_path: PathBuf,
+    funnel: bool,
+}
+
+#[derive(Debug)]
+enum ParsedCli {
+    Run(UpOptions),
+    Help(String),
+    Version(String),
+}
+
+struct TunnelHandle {
+    child: TokioChild,
+}
+
+impl Default for UpOptions {
+    fn default() -> Self {
+        Self {
+            host: env::var("WEBPTY_HOST").unwrap_or_else(|_| DEFAULT_HOST.to_string()),
+            port: env::var("PORT")
+                .ok()
+                .and_then(|value| value.parse::<u16>().ok())
+                .unwrap_or(DEFAULT_PORT),
+            settings_path: default_settings_path(),
+            funnel: env_flag("WEBPTY_FUNNEL"),
+        }
+    }
+}
+
+impl UpOptions {
+    fn bind_address(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+
+    fn local_origin(&self) -> String {
+        let host = match self.host.as_str() {
+            "0.0.0.0" | "::" | "[::]" => DEFAULT_HOST,
+            other => other,
+        };
+
+        format!("http://{host}:{}", self.port)
+    }
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name)
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 #[derive(Debug, Clone)]
@@ -164,8 +238,8 @@ impl SessionState {
     }
 
     fn terminate(&self) {
-        if let Ok(mut child) = self.runtime.child.lock() {
-            let _ = child.kill();
+        if let Ok(mut killer) = self.runtime.killer.lock() {
+            let _ = killer.kill();
         }
     }
 }
@@ -477,25 +551,102 @@ struct LaunchPlan {
 struct SpawnedPty {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
-    child: Box<dyn Child + Send>,
+    child: Box<dyn Child + Send + Sync>,
     reader: Box<dyn Read + Send>,
 }
 
 #[tokio::main]
 async fn main() {
-    if let Err(error) = run().await {
-        eprintln!("webpty server failed: {error}");
-        std::process::exit(1);
+    match parse_cli() {
+        Ok(ParsedCli::Run(options)) => {
+            if let Err(error) = run_up(options).await {
+                eprintln!("webpty failed: {error}");
+                std::process::exit(1);
+            }
+        }
+        Ok(ParsedCli::Help(usage)) => println!("{usage}"),
+        Ok(ParsedCli::Version(version)) => println!("{version}"),
+        Err(error) => {
+            eprintln!("{error}\n\n{}", root_usage());
+            std::process::exit(2);
+        }
     }
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let port = env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(3001);
+fn parse_cli() -> Result<ParsedCli, String> {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let Some(first) = args.first() else {
+        return Ok(ParsedCli::Run(default_up_options()));
+    };
 
-    let settings_path = default_settings_path();
+    match first.as_str() {
+        "-h" | "--help" => Ok(ParsedCli::Help(root_usage())),
+        "-V" | "--version" => Ok(ParsedCli::Version(version_string())),
+        "up" => parse_up_command(args.into_iter().skip(1)),
+        flag if flag.starts_with('-') => parse_up_command(args),
+        command => Err(format!("unknown command `{command}`")),
+    }
+}
+
+fn parse_up_command(args: impl IntoIterator<Item = String>) -> Result<ParsedCli, String> {
+    let mut options = default_up_options();
+    let mut args = args.into_iter();
+
+    while let Some(argument) = args.next() {
+        match argument.as_str() {
+            "-h" | "--help" => return Ok(ParsedCli::Help(up_usage())),
+            "-V" | "--version" => return Ok(ParsedCli::Version(version_string())),
+            "--host" => {
+                options.host = take_option_value("--host", args.next())?;
+            }
+            "--port" => {
+                let value = take_option_value("--port", args.next())?;
+                options.port = value
+                    .parse::<u16>()
+                    .map_err(|_| format!("invalid port `{value}`"))?;
+            }
+            "--settings" => {
+                options.settings_path =
+                    PathBuf::from(take_option_value("--settings", args.next())?);
+            }
+            "--funnel" => {
+                options.funnel = true;
+            }
+            flag => return Err(format!("unknown `webpty up` option `{flag}`")),
+        }
+    }
+
+    Ok(ParsedCli::Run(options))
+}
+
+fn take_option_value(flag: &str, value: Option<String>) -> Result<String, String> {
+    value.ok_or_else(|| format!("missing value for `{flag}`"))
+}
+
+fn default_up_options() -> UpOptions {
+    UpOptions::default()
+}
+
+fn root_usage() -> String {
+    format!(
+        "webpty {}\n\nUsage:\n  webpty [up] [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n  webpty up --help\n\nCommands:\n  up        Start the Rust PTY server and embedded web UI\n\nIf no command is provided, `webpty` defaults to `webpty up`.",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+fn up_usage() -> String {
+    format!(
+        "webpty up\n\nUsage:\n  webpty up [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n\nOptions:\n  --host <host>         Bind address for the local server (default: {})\n  --port <port>         TCP port for the local server (default: {})\n  --settings <path>     WT-compatible settings file path\n  --funnel              Expose the local server through an SSH reverse tunnel\n  -h, --help            Print help\n  -V, --version         Print version",
+        DEFAULT_HOST, DEFAULT_PORT
+    )
+}
+
+fn version_string() -> String {
+    format!("webpty {}", env!("CARGO_PKG_VERSION"))
+}
+
+async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let settings_path = options.settings_path.clone();
     let settings = load_settings(&settings_path).unwrap_or_else(|error| {
         eprintln!(
             "failed to load settings from {}: {error}. Falling back to defaults.",
@@ -518,41 +669,196 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let app = Router::new()
-        .route("/", get(root))
         .route("/api/health", get(health))
         .route("/api/settings", get(get_settings).put(update_settings))
         .route("/api/sessions", get(list_sessions).post(create_session))
         .route("/api/sessions/{session_id}", delete(delete_session))
         .route("/ws/{session_id}", get(ws_handler))
-        .layer(CorsLayer::permissive())
-        .with_state(state);
+        .fallback(get(static_handler))
+        .with_state(state.clone());
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    let listener = tokio::net::TcpListener::bind(options.bind_address()).await?;
+    println!("webpty ready on {}", options.local_origin());
 
-    println!("webpty server listening on http://127.0.0.1:{port}");
+    let mut tunnel = if options.funnel {
+        Some(start_funnel(options.port).await?)
+    } else {
+        None
+    };
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    if let Some(tunnel) = tunnel.as_mut() {
+        stop_tunnel(tunnel).await;
+    }
+
+    terminate_all_sessions(&state).await;
     Ok(())
 }
 
-async fn root() -> &'static str {
-    "webpty PTY server"
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+async fn start_funnel(port: u16) -> Result<TunnelHandle, Box<dyn std::error::Error>> {
+    let mut command = TokioCommand::new("ssh");
+    command
+        .arg("-o")
+        .arg("StrictHostKeyChecking=no")
+        .arg("-o")
+        .arg(format!("UserKnownHostsFile={}", null_device()))
+        .arg("-o")
+        .arg("ServerAliveInterval=30")
+        .arg("-o")
+        .arg("ExitOnForwardFailure=yes")
+        .arg("-T")
+        .arg("-N")
+        .arg("-R")
+        .arg(format!("80:127.0.0.1:{port}"))
+        .arg(LOCALHOST_RUN_DESTINATION)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("failed to start funnel via `ssh`: {error}"))?;
+
+    if let Some(stdout) = child.stdout.take() {
+        tokio::spawn(stream_funnel_output(stdout, false));
+    }
+
+    if let Some(stderr) = child.stderr.take() {
+        tokio::spawn(stream_funnel_output(stderr, true));
+    }
+
+    println!("webpty funnel starting via {}", LOCALHOST_RUN_DESTINATION);
+
+    Ok(TunnelHandle { child })
+}
+
+async fn stop_tunnel(tunnel: &mut TunnelHandle) {
+    let _ = tunnel.child.start_kill();
+    let _ = tunnel.child.wait().await;
+}
+
+async fn stream_funnel_output<R>(reader: R, stderr: bool)
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    let mut lines = BufReader::new(reader).lines();
+
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                if let Some(url) = extract_https_url(trimmed) {
+                    println!("webpty funnel available at {url}");
+                    continue;
+                }
+
+                if stderr {
+                    eprintln!("funnel: {trimmed}");
+                } else {
+                    println!("funnel: {trimmed}");
+                }
+            }
+            Ok(None) | Err(_) => break,
+        }
+    }
+}
+
+fn extract_https_url(line: &str) -> Option<String> {
+    if !line.contains("tunneled with") {
+        return None;
+    }
+
+    let start = line.find("https://")?;
+    let url = line[start..]
+        .chars()
+        .take_while(|character| !character.is_whitespace())
+        .collect::<String>();
+
+    if url.len() > "https://".len() {
+        Some(url.trim_end_matches([',', ')', ';']).to_string())
+    } else {
+        None
+    }
+}
+
+#[cfg(windows)]
+fn null_device() -> &'static str {
+    "NUL"
+}
+
+#[cfg(not(windows))]
+fn null_device() -> &'static str {
+    "/dev/null"
+}
+
+async fn terminate_all_sessions(state: &AppState) {
+    let sessions = state.sessions.read().await;
+    for session in sessions.values() {
+        session.terminate();
+    }
+}
+
+async fn static_handler(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+
+    if path == "api" || path.starts_with("api/") || path == "ws" || path.starts_with("ws/") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    if let Some(response) = find_embedded_asset(path) {
+        return response;
+    }
+
+    if path.contains('.') {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    find_embedded_asset("index.html").unwrap_or_else(|| StatusCode::NOT_FOUND.into_response())
+}
+
+fn find_embedded_asset(path: &str) -> Option<Response> {
+    let normalized = match path {
+        "" => "index.html",
+        value => value,
+    };
+    let file = WEB_UI_DIR.get_file(normalized)?;
+    let mime = mime_guess::from_path(normalized).first_or_octet_stream();
+    let mut response = Response::new(Body::from(file.contents().to_vec()));
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(mime.as_ref()).ok()?,
+    );
+    Some(response)
 }
 
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
-        message: "WT-compatible PTY server ready".to_string(),
+        message: "WT-compatible PTY server and embedded shell ready".to_string(),
         websocket_path: "/ws/:sessionId".to_string(),
-        mode: "pty-runtime".to_string(),
+        mode: "standalone-shell".to_string(),
         features: vec![
             "health",
+            "embedded-shell",
             "settings-read",
             "settings-write",
             "sessions-list",
             "sessions-create-delete",
             "websocket-live-pty",
             "pty-resize-input-output",
+            "funnel-ssh",
         ],
     })
 }
@@ -633,7 +939,10 @@ async fn create_session(
     if profile.hidden.unwrap_or(false) {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("profile `{}` is hidden and cannot be launched", profile.name),
+            format!(
+                "profile `{}` is hidden and cannot be launched",
+                profile.name
+            ),
         ));
     }
     let title = payload
@@ -815,7 +1124,7 @@ async fn send_json(
 fn default_settings_path() -> PathBuf {
     env::var("WEBPTY_SETTINGS_PATH")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("config/webpty.settings.json"))
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_SETTINGS_PATH))
 }
 
 fn load_settings(path: &Path) -> Result<WindowsTerminalSettings, Box<dyn std::error::Error>> {
@@ -902,6 +1211,7 @@ fn spawn_session(
         .ok_or_else(|| format!("profile `{profile_id}` is not defined"))?;
     let mut plan = build_launch_plan(&profile, cwd_override);
     let spawned = spawn_pty(&mut plan)?;
+    let killer = spawned.child.clone_killer();
     let (events, _) = broadcast::channel(128);
     let state = Arc::new(SessionState {
         meta: StdRwLock::new(SessionRecord {
@@ -918,13 +1228,13 @@ fn spawn_session(
         runtime: SessionRuntime {
             master: Arc::new(Mutex::new(spawned.master)),
             writer: Arc::new(Mutex::new(spawned.writer)),
-            child: Arc::new(Mutex::new(spawned.child)),
+            killer: Arc::new(Mutex::new(killer)),
             events,
         },
     });
 
     spawn_reader(state.clone(), spawned.reader);
-    spawn_waiter(state.clone());
+    spawn_waiter(state.clone(), spawned.child);
 
     Ok(state)
 }
@@ -1243,15 +1553,9 @@ fn spawn_reader(session: Arc<SessionState>, mut reader: Box<dyn Read + Send>) {
     });
 }
 
-fn spawn_waiter(session: Arc<SessionState>) {
+fn spawn_waiter(session: Arc<SessionState>, mut child: Box<dyn Child + Send + Sync>) {
     thread::spawn(move || {
-        let status = {
-            let mut child = match session.runtime.child.lock() {
-                Ok(child) => child,
-                Err(_) => return,
-            };
-            child.wait()
-        };
+        let status = child.wait();
 
         match status {
             Ok(exit_status) => {

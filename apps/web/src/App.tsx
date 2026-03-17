@@ -45,6 +45,9 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
 
 function App() {
   const [settings, setSettings] = useState<WindowsTerminalSettings>(demoSettings)
+  const [settingsDocument, setSettingsDocument] = useState<Record<string, unknown>>(() =>
+    cloneSettingsDocument(demoSettings),
+  )
   const [sessions, setSessions] = useState<SessionItem[]>(demoSessions)
   const [activeSessionId, setActiveSessionId] = useState(demoSessions[0].id)
   const [serverHealth, setServerHealth] = useState<ServerHealth>(demoHealth)
@@ -63,6 +66,7 @@ function App() {
   const activeProfile = resolveProfile(settings, activeSession.profileId)
   const defaultProfile = resolveProfile(settings, settings.defaultProfile)
   const activeScheme = resolveScheme(settings, activeProfile, appearance)
+  const activeSessionLabel = sessionTitle(activeSession, activeProfile)
   const themeName = resolveThemeName(settings.theme, appearance) ?? 'System'
   const uiTheme = resolveUiTheme(settings, activeProfile, appearance)
   const visibleProfiles = settings.profiles.list
@@ -76,7 +80,7 @@ function App() {
     { command: 'settings', keys: actionLabel(actionBindings.openSettings) },
   ].filter((shortcut) => shortcut.keys.length > 0)
   const canConnect = remoteReady && serverHealth.status === 'ok'
-  const isDraftDirty = settingsDraft !== formatSettingsJson(settings)
+  const isDraftDirty = settingsDraft !== formatSettingsJson(settingsDocument)
   const runtimeLabel = canConnect
     ? connectionState === 'live'
       ? 'live runtime'
@@ -121,6 +125,10 @@ function App() {
         settingsResult.status === 'fulfilled'
           ? normalizeSettings(settingsResult.value)
           : demoSettings
+      const nextSettingsDocument =
+        settingsResult.status === 'fulfilled'
+          ? cloneSettingsDocument(settingsResult.value, nextSettings)
+          : cloneSettingsDocument(demoSettings)
       const nextSessions =
         sessionsResult.status === 'fulfilled'
           ? normalizeSessions(sessionsResult.value)
@@ -134,7 +142,8 @@ function App() {
       startTransition(() => {
         setServerHealth(nextHealth)
         setSettings(nextSettings)
-        setSettingsDraft(formatSettingsJson(nextSettings))
+        setSettingsDocument(nextSettingsDocument)
+        setSettingsDraft(formatSettingsJson(nextSettingsDocument))
         setSessions(nextSessions.length > 0 ? nextSessions : demoSessions)
         setActiveSessionId((currentId) =>
           nextSessions.some((session) => session.id === currentId)
@@ -338,14 +347,16 @@ function App() {
     }
   }, [])
 
-  async function commitSettings(nextSettings: WindowsTerminalSettings, persist: boolean) {
+  async function commitSettings(nextDocument: Record<string, unknown>, persist: boolean) {
     setSettingsError(null)
     setSaveState(persist ? 'saving' : 'saved')
+    const nextSettings = normalizeSettings(nextDocument)
 
     if (!persist) {
       startTransition(() => {
         setSettings(nextSettings)
-        setSettingsDraft(formatSettingsJson(nextSettings))
+        setSettingsDocument(nextDocument)
+        setSettingsDraft(formatSettingsJson(nextDocument))
       })
       return
     }
@@ -356,13 +367,15 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(nextSettings),
+        body: JSON.stringify(nextDocument),
       })
       const normalized = normalizeSettings(payload)
+      const document = cloneSettingsDocument(payload, normalized)
 
       startTransition(() => {
         setSettings(normalized)
-        setSettingsDraft(formatSettingsJson(normalized))
+        setSettingsDocument(document)
+        setSettingsDraft(formatSettingsJson(document))
         setRemoteReady(true)
       })
       setSaveState('saved')
@@ -373,39 +386,26 @@ function App() {
   }
 
   async function handleThemeApply(nextThemeName: string) {
-    const nextSettings: WindowsTerminalSettings = {
-      ...settings,
-      theme: nextThemeName,
-    }
-
-    await commitSettings(nextSettings, canConnect)
+    await commitSettings({ ...settingsDocument, theme: nextThemeName }, canConnect)
   }
 
   async function handleDefaultProfileSelect(profileId: string) {
-    const nextSettings: WindowsTerminalSettings = {
-      ...settings,
-      defaultProfile: profileId,
-    }
-
-    await commitSettings(nextSettings, canConnect)
+    await commitSettings({ ...settingsDocument, defaultProfile: profileId }, canConnect)
   }
 
   async function handleSettingsSave() {
     try {
-      const parsed = JSON.parse(settingsDraft) as WindowsTerminalSettings
-      const normalized = normalizeSettings(parsed)
-
-      await commitSettings(normalized, canConnect)
+      await commitSettings(parseSettingsDraft(settingsDraft), canConnect)
     } catch {
       setSaveState('error')
-      setSettingsError('settings.json 초안이 유효한 JSON이 아닙니다.')
+      setSettingsError('settings.json 초안이 유효한 WT 호환 JSON이 아닙니다.')
     }
   }
 
   function handleSettingsReset() {
     setSettingsError(null)
     setSaveState('idle')
-    setSettingsDraft(formatSettingsJson(settings))
+    setSettingsDraft(formatSettingsJson(settingsDocument))
   }
 
   return (
@@ -482,7 +482,7 @@ function App() {
                 </article>
                 <article className="summary-card">
                   <span className="header-label">Active session</span>
-                  <strong>{activeSession.title}</strong>
+                  <strong>{activeSessionLabel}</strong>
                   <span>{activeSession.cwd}</span>
                 </article>
               </section>
@@ -646,6 +646,7 @@ function App() {
           <div className="rail-list" role="tablist" aria-label="Sessions">
             {sessions.map((session) => {
               const profile = resolveProfile(settings, session.profileId)
+              const tabLabel = sessionTitle(session, profile)
               const isActive = session.id === activeSession.id
 
               return (
@@ -659,12 +660,13 @@ function App() {
                     className="rail-tab"
                     role="tab"
                     aria-selected={isActive}
+                    aria-label={`${tabLabel} tab`}
                     onClick={() => activateSession(session.id)}
                   >
                     <span className={`rail-tab-status rail-tab-status-${session.status}`} />
                     <span className="rail-tab-icon">{profileBadge(profile)}</span>
                     <span className="rail-tab-copy">
-                      <strong>{session.title}</strong>
+                      <strong>{tabLabel}</strong>
                       <span>{profile.name}</span>
                     </span>
                     <span className="rail-tab-meta">{sessionLabel(session, activeSession.id)}</span>
@@ -674,7 +676,7 @@ function App() {
                     type="button"
                     className="rail-tab-close"
                     onClick={() => void closeSession(session.id)}
-                    aria-label={`${session.title} 닫기`}
+                    aria-label={`${tabLabel} 닫기`}
                   >
                     ×
                   </button>
@@ -1108,11 +1110,36 @@ function normalizeKeyToken(value: string) {
     return ' '
   }
 
-  if (token === 'escape') {
-    return 'esc'
+  if (token === 'escape' || token === 'esc') {
+    return 'escape'
   }
 
   return token
+}
+
+function parseSettingsDraft(draft: string) {
+  const parsed = JSON.parse(draft) as unknown
+
+  if (!isRecord(parsed) || !isRecord(parsed.profiles) || !Array.isArray(parsed.profiles.list)) {
+    throw new Error('invalid settings payload')
+  }
+
+  return cloneSettingsDocument(parsed)
+}
+
+function cloneSettingsDocument(
+  payload: unknown,
+  fallback: WindowsTerminalSettings = demoSettings,
+): Record<string, unknown> {
+  if (isRecord(payload)) {
+    return cloneJson(payload)
+  }
+
+  return cloneJson(fallback) as unknown as Record<string, unknown>
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function isTypingTarget(target: EventTarget | null) {
@@ -1140,6 +1167,10 @@ function profileBadge(profile: WindowsTerminalProfile) {
     .join('')
     .slice(0, 2)
     .toUpperCase()
+}
+
+function sessionTitle(session: SessionItem, profile: WindowsTerminalProfile) {
+  return profile.tabTitle ?? session.title
 }
 
 function resolveAppearance(): 'dark' | 'light' {

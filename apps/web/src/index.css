@@ -21,13 +21,12 @@
   --signal: #c48a17;
   --mint: #1d9d58;
   --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.24);
-  --sans:
-    'Segoe UI Variable Text', 'Segoe UI', 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif;
   --mono:
     'Cascadia Mono', 'Cascadia Code', 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
+  --sans: var(--mono);
   color: var(--text);
   background: var(--app-bg);
-  font-family: var(--sans);
+  font-family: var(--mono);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

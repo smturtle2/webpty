@@ -15,7 +15,9 @@
 
 `webpty` keeps the terminal dominant: the shell owns almost the whole screen,
 sessions live in a narrow rail on the right, and a WT-compatible settings file
-drives profiles, themes, and keyboard shortcuts.
+drives profiles, themes, and keyboard shortcuts. The shipped CLI is a single
+Rust binary: `webpty up` starts the embedded web UI and the PTY runtime
+together.
 
 The app is intentionally smaller than Windows Terminal, but it now runs a real
 Rust PTY backend instead of a mock transcript transport.
@@ -31,9 +33,12 @@ Rust PTY backend instead of a mock transcript transport.
 Implemented today:
 
 - live PTY-backed sessions from a Rust/Axum server
+- embedded production web UI served directly by the Rust binary
+- `webpty up` CLI entrypoint for local startup
+- `webpty up --funnel` external access through an SSH reverse tunnel
 - one dominant black terminal surface with a narrow white right-side session rail
-- WT-compatible `settings.json` loading, normalization, and persistence
-- profile launch, default profile selection, and theme switching in a slide-over settings studio
+- WT-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
+- profile launch, default profile selection, and theme switching in a right-anchored settings studio
 - WebSocket input/output streaming and PTY resize handling
 
 Not implemented yet:
@@ -59,35 +64,65 @@ The goal is not line-by-line parity. The goal is:
 
 ### Requirements
 
-- Node.js 24+
-- npm 11+
 - Rust 1.94+
+- Node.js 24+ and npm 11+ only if you are rebuilding the frontend bundle or working on the UI
 
-### Install
+### Global install
+
+```bash
+cargo install --git https://github.com/smturtle2/webpty --locked
+```
+
+From a local checkout you can also install the binary directly:
+
+```bash
+cargo install --path apps/server --locked
+```
+
+### Run
+
+```bash
+webpty up
+```
+
+### Run with external access
+
+```bash
+webpty up --funnel
+```
+
+`--funnel` uses the local OpenSSH client and `localhost.run` to expose the
+local server. `ssh` must be available on the host.
+
+### Development
+
+Install workspace dependencies:
 
 ```bash
 npm install
 ```
 
-### Run the Rust backend
-
-```bash
-cargo run --manifest-path apps/server/Cargo.toml
-```
-
-### Run the frontend
+Run the frontend dev server:
 
 ```bash
 npm run dev:web
 ```
 
-The Vite dev server proxies `/api` and `/ws` requests to `http://127.0.0.1:3001`.
+Run the Rust runtime:
+
+```bash
+cargo run -- up
+```
+
+The Vite dev server proxies `/api` and `/ws` requests to `http://127.0.0.1:3001`,
+while production builds are emitted into `apps/server/ui` and served by the Rust
+binary.
 
 ## Validate
 
 ```bash
 npm run build:web
-cargo check --manifest-path apps/server/Cargo.toml
+cargo check
 ```
 
 `npm run lint:web` is still configured, but it currently hangs in this workspace
@@ -116,15 +151,15 @@ and needs separate investigation.
 React shell
   ├─ terminal stage
   ├─ right-side session rail
-  └─ slide-over settings studio
-       ↓
-HTTP + WebSocket
+  └─ right-anchored settings studio
        ↓
 Rust runtime
+  ├─ serves embedded UI assets
   ├─ WT-compatible settings load/save
   ├─ PTY-backed session lifecycle
   ├─ input / resize / output streaming
-  └─ session creation and deletion
+  ├─ session creation and deletion
+  └─ optional SSH funnel
 ```
 
 ## Documentation

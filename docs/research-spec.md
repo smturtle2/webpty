@@ -18,9 +18,10 @@ Included:
 - one dominant terminal viewport
 - narrow right-side session rail
 - minimal rail actions
-- a slide-over WT-compatible settings studio
+- a right-anchored WT-compatible settings studio
 - keyboard session switching and creation
 - live PTY transport behind the UI
+- one-command Rust startup via `webpty up`
 
 Excluded for now:
 

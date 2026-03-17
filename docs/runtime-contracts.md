@@ -22,20 +22,26 @@ Example:
 ```json
 {
   "status": "ok",
-  "message": "WT-compatible PTY server ready",
+  "message": "WT-compatible PTY server and embedded shell ready",
   "websocketPath": "/ws/:sessionId",
-  "mode": "pty-runtime",
+  "mode": "standalone-shell",
   "features": [
     "health",
+    "embedded-shell",
     "settings-read",
     "settings-write",
     "sessions-list",
     "sessions-create-delete",
     "websocket-live-pty",
-    "pty-resize-input-output"
+    "pty-resize-input-output",
+    "funnel-ssh"
   ]
 }
 ```
+
+### `GET /`
+
+Serves the embedded production web UI that is bundled into the Rust binary.
 
 ### `GET /api/settings`
 
@@ -110,6 +116,6 @@ Connection behavior:
 ## Prototype Assumptions
 
 - The UI can still fall back to demo mode if the backend is unavailable.
-- The backend is now a real PTY runtime, not a transcript mock.
+- The backend is now a real PTY runtime that also serves the production shell bundle.
 - WT-compatible theme and profile definitions remain the main source of truth.
 - Split panes, search, and command palette remain future milestones.

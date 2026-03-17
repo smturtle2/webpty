@@ -10,6 +10,8 @@
     "build:web": "npm --workspace apps/web run build",
     "lint:web": "npm --workspace apps/web run lint",
     "build:server": "cargo build --manifest-path apps/server/Cargo.toml",
-    "check:server": "cargo check --manifest-path apps/server/Cargo.toml"
+    "check:server": "cargo check --manifest-path apps/server/Cargo.toml",
+    "build": "npm run build:web && npm run build:server",
+    "check": "npm run build:web && npm run check:server"
   }
 }

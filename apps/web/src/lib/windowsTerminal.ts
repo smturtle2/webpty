@@ -152,7 +152,7 @@ export function buildPreviewLines(transcript: string): string[] {
     .slice(-4)
 }
 
-export function formatSettingsJson(settings: WindowsTerminalSettings): string {
+export function formatSettingsJson(settings: unknown): string {
   return `${JSON.stringify(settings, null, 2)}\n`
 }
 
