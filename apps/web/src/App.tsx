@@ -12,6 +12,11 @@ import './App.css'
 import { TerminalViewport } from './components/TerminalViewport'
 import { demoHealth, demoSessions, demoSettings } from './data/demo'
 import {
+  getAppCopy,
+  languageModeLabel,
+  resolveDisplayLanguage,
+} from './lib/localization'
+import {
   COLOR_REFERENCE_TOKENS,
   actionLabel,
   buildColorReferencePalette,
@@ -42,6 +47,7 @@ import type {
   TerminalProfile,
   TerminalSettings,
   TerminalTheme,
+  UiLanguage,
   UiThemeTokens,
 } from './types'
 
@@ -51,7 +57,7 @@ type PaneLayout = 'single' | 'vertical' | 'horizontal'
 type WorkspaceMode = 'terminal' | 'settings'
 type SupportedActionCommand = 'newTab' | 'closeTab' | 'nextTab' | 'prevTab' | 'openSettings'
 type ActionBindings = Record<SupportedActionCommand, string[]>
-type SettingsSection = 'appearance' | 'profiles' | 'json' | 'shortcuts'
+type SettingsSection = 'appearance' | 'profiles' | 'language' | 'json' | 'shortcuts'
 
 interface WorkspaceTab {
   id: string
@@ -71,11 +77,12 @@ const EMPTY_THEMES: TerminalTheme[] = []
 
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
 const SETTINGS_WORKSPACE_ID = 'workspace-settings'
-const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
-  { id: 'appearance', label: 'Theme Studio', meta: 'Surface, tabs, and shell chrome' },
-  { id: 'profiles', label: 'Profile Studio', meta: 'Shell launch, prompt, and font behavior' },
-  { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
-  { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
+const SETTINGS_SECTION_IDS: SettingsSection[] = [
+  'appearance',
+  'profiles',
+  'language',
+  'json',
+  'shortcuts',
 ]
 const CHROME_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter(
   (token) => token !== 'cursorColor' && token !== 'selectionBackground',
@@ -160,12 +167,20 @@ function App() {
   const defaultProfile = resolveProfile(settings, settings.defaultProfile)
   const activeScheme = resolveScheme(settings, activeProfile, uiAppearance)
   const activeTheme = resolveTheme(settings, uiAppearance)
-  const themeName = resolveThemeName(settings.theme, uiAppearance) ?? 'System'
+  const uiLanguage = resolveDisplayLanguage(settings.webpty?.language)
+  const copy = getAppCopy(uiLanguage)
+  const settingsSections = SETTINGS_SECTION_IDS.map((id) => ({
+    id,
+    ...copy.sections[id],
+  }))
+  const themeName = resolveThemeName(settings.theme, uiAppearance) ?? copy.system
   const uiTheme = resolveUiTheme(settings, activeProfile, uiAppearance)
   const closeButtonMode = activeTheme?.tab?.showCloseButton ?? 'hover'
   const visiblePaneSessions = paneSessions.length > 0 ? paneSessions : [activeSession]
   const activeTabLabel =
-    activeWorkspace === 'settings' ? 'Settings' : tabLabelForTab(currentTab, sessions, settings)
+    activeWorkspace === 'settings'
+      ? copy.settingsWorkspace
+      : tabLabelForTab(currentTab, sessions, settings)
   const activeWorkspaceId =
     activeWorkspace === 'settings' ? SETTINGS_WORKSPACE_ID : currentTab.id
   const profileCatalog = settings.profiles.list.map((profile) =>
@@ -189,10 +204,10 @@ function App() {
   const actionBindings = resolveActionBindings(settings.actions)
   const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
-    { command: 'new tab', keys: actionLabel(actionBindings.newTab) },
-    { command: 'close tab', keys: actionLabel(actionBindings.closeTab) },
-    { command: 'next tab', keys: actionLabel(actionBindings.nextTab) },
-    { command: 'settings', keys: actionLabel(actionBindings.openSettings) },
+    { command: copy.shortcutNewTab, keys: actionLabel(actionBindings.newTab) },
+    { command: copy.shortcutCloseTab, keys: actionLabel(actionBindings.closeTab) },
+    { command: copy.shortcutNextTab, keys: actionLabel(actionBindings.nextTab) },
+    { command: copy.shortcutSettings, keys: actionLabel(actionBindings.openSettings) },
   ].filter((shortcut) => shortcut.keys.length > 0)
   const canConnect = remoteReady && serverHealth.status === 'ok'
   const isDraftDirty = settingsDraft !== formatSettingsJson(settingsDocument)
@@ -209,9 +224,25 @@ function App() {
         : saveState === 'error'
           ? 'error'
           : 'idle'
+  const runtimeLabelText =
+    runtimeLabel === 'live'
+      ? copy.live
+      : runtimeLabel === 'connecting'
+        ? copy.connecting
+        : runtimeLabel === 'offline'
+          ? copy.offline
+          : copy.demo
+  const saveLabelText =
+    saveLabel === 'saving'
+      ? copy.saving
+      : saveLabel === 'saved'
+        ? copy.saved
+        : saveLabel === 'error'
+          ? copy.error
+          : copy.idle
   const runtimeMessage = isBooting ? 'Syncing runtime contracts…' : serverHealth.message
   const settingsSectionMeta =
-    SETTINGS_SECTIONS.find((section) => section.id === activeSettingsSection) ?? SETTINGS_SECTIONS[0]
+    settingsSections.find((section) => section.id === activeSettingsSection) ?? settingsSections[0]
   const settingsRailLabel = compactRailLabel(settingsSectionMeta.label)
   const editorHostPlatform = resolveEditorHostPlatform(serverHealth)
   const profileCommandlinePlaceholder = resolveCommandlinePlaceholder(
@@ -221,6 +252,7 @@ function App() {
   const profileStartingDirectoryPlaceholder = resolveStartingDirectoryPlaceholder(
     editorHostPlatform,
   )
+  const configuredLanguage = settings.webpty?.language ?? 'system'
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -685,18 +717,18 @@ function App() {
       setSaveState('saved')
     } catch {
       setSaveState('error')
-      setSettingsError('Settings save failed. Check the JSON draft and runtime status.')
+      setSettingsError(copy.saveFailed)
     }
   }
 
   async function handleProfileDraftSave() {
     if (profileDraft.hidden && selectedProfileId === defaultProfile.id) {
-      setSettingsError('Choose another startup profile before hiding the current default profile.')
+      setSettingsError(copy.chooseAnotherStartupProfile)
       return
     }
 
     if (profileDraft.hidden && visibleProfileCount <= 1 && !selectedProfile.hidden) {
-      setSettingsError('At least one visible profile must remain available.')
+      setSettingsError(copy.visibleProfileRequired)
       return
     }
 
@@ -708,7 +740,7 @@ function App() {
 
   async function handleProfileDraftDefault() {
     if (profileDraft.hidden) {
-      setSettingsError('Hidden profiles cannot be used as the startup shell.')
+      setSettingsError(copy.hiddenProfileCannotStart)
       return
     }
 
@@ -752,12 +784,12 @@ function App() {
 
   async function handleProfileDelete() {
     if (profileCatalog.length <= 1) {
-      setSettingsError('At least one profile must remain available.')
+      setSettingsError(copy.atLeastOneProfile)
       return
     }
 
     if (visibleProfileCount <= 1 && !selectedProfile.hidden) {
-      setSettingsError('At least one visible profile must remain available.')
+      setSettingsError(copy.visibleProfileRequired)
       return
     }
 
@@ -811,7 +843,7 @@ function App() {
 
   async function handleThemeDelete() {
     if (themeCatalog.length <= 1) {
-      setSettingsError('At least one theme must remain available.')
+      setSettingsError(copy.atLeastOneTheme)
       return
     }
 
@@ -894,7 +926,7 @@ function App() {
       await commitSettings(parseSettingsDraft(settingsDraft), canConnect)
     } catch {
       setSaveState('error')
-      setSettingsError('The settings draft is not valid shared settings JSON.')
+      setSettingsError(copy.invalidSettingsDraft)
     }
   }
 
@@ -902,6 +934,11 @@ function App() {
     setSettingsError(null)
     setSaveState('idle')
     setSettingsDraft(formatSettingsJson(settingsDocument))
+  }
+
+  async function handleLanguageChange(language: UiLanguage) {
+    const nextDocument = updateLanguageDocument(settingsDocument, language)
+    await commitSettings(nextDocument, canConnect)
   }
 
   function toggleRail() {
@@ -927,7 +964,7 @@ function App() {
           <section
             key={`${session.id}-${canConnect ? 'live' : 'offline'}`}
             className={`pane-shell ${isFocusedPane ? 'is-active' : ''}`}
-            aria-label={`${sessionTitle(session, profile)} pane`}
+            aria-label={copy.paneAria(sessionTitle(session, profile))}
             style={
               {
                 '--pane-terminal-bg': viewportScheme.background,
@@ -937,15 +974,6 @@ function App() {
             onMouseDown={() => activateSession(session.id)}
           >
             <div className="pane-frame" aria-hidden="true" />
-            <div
-              className={`pane-badge ${
-                visiblePaneSessions.length > 1 ? 'is-visible' : ''
-              } ${isFocusedPane ? 'is-active' : ''}`}
-              aria-hidden="true"
-            >
-              <span>{sessionTitle(session, profile)}</span>
-              <small>{profile.name}</small>
-            </div>
             <TerminalViewport
               active={isFocusedPane}
               canConnect={canConnect}
@@ -968,10 +996,10 @@ function App() {
   )
 
   const settingsWorkspace = (
-    <section className="settings-workspace" aria-label="Settings">
+    <section className="settings-workspace" aria-label={copy.settingsWorkspace}>
       <div className="drawer-layout settings-layout">
-        <nav className="drawer-nav settings-nav" aria-label="Settings sections">
-          {SETTINGS_SECTIONS.map((section) => (
+        <nav className="drawer-nav settings-nav" aria-label={copy.settingsSections}>
+          {settingsSections.map((section) => (
             <button
               key={section.id}
               type="button"
@@ -988,21 +1016,21 @@ function App() {
             </button>
           ))}
 
-          <article className="drawer-status-card" aria-label="Studio status">
-            <span className="header-label">Studio</span>
+          <article className="drawer-status-card" aria-label={copy.studioStatus}>
+            <span className="header-label">{copy.studioLabel}</span>
             <strong>{settingsSectionMeta.label}</strong>
             <span>{settingsSectionMeta.meta}</span>
             <div className="status-row">
               <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
-                {runtimeLabel}
+                {runtimeLabelText}
               </span>
               <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
-                {saveLabel}
+                {saveLabelText}
               </span>
             </div>
             <span>
               {activeTabLabel}
-              {currentTab.paneIds.length > 1 ? ` · ${currentTab.paneIds.length} panes` : ''}
+              {currentTab.paneIds.length > 1 ? ` · ${copy.paneCount(currentTab.paneIds.length)}` : ''}
             </span>
             <span>{runtimeMessage}</span>
           </article>
@@ -1013,11 +1041,8 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Theme Studio</strong>
-                  <p>
-                    Keep the shell black, the tab surfaces white, and the chrome flat while
-                    editing the shared theme payload directly.
-                  </p>
+                  <strong>{copy.themeStudioTitle}</strong>
+                  <p>{copy.themeStudioDescription}</p>
                 </div>
                 <div className="field-actions">
                   <button
@@ -1025,14 +1050,14 @@ function App() {
                     className="toolbar-button ghost"
                     onClick={() => void handleThemeCreate()}
                   >
-                    New theme
+                    {copy.newTheme}
                   </button>
                   <button
                     type="button"
                     className="toolbar-button ghost"
                     onClick={() => void handleThemeDuplicate()}
                   >
-                    Duplicate
+                    {copy.duplicate}
                   </button>
                   <button
                     type="button"
@@ -1040,31 +1065,31 @@ function App() {
                     onClick={() => void handleThemeDelete()}
                     disabled={themeCatalog.length <= 1}
                   >
-                    Delete
+                    {copy.delete}
                   </button>
                 </div>
               </div>
 
-              <section className="drawer-overview" aria-label="Appearance overview">
+              <section className="drawer-overview" aria-label={copy.sections.appearance.label}>
                 <article className="summary-card">
-                  <span className="header-label">Applied</span>
+                  <span className="header-label">{copy.applied}</span>
                   <strong>{themeName}</strong>
-                  <span>{uiAppearance} shell</span>
+                  <span>{uiAppearance} {copy.activeAppearanceSuffix}</span>
                 </article>
                 <article className="summary-card">
-                  <span className="header-label">Row</span>
+                  <span className="header-label">{copy.row}</span>
                   <strong>{activeTheme?.tabRow?.background ?? '#efefef'}</strong>
-                  <span>tab strip</span>
+                  <span>{copy.tabStripLabel}</span>
                 </article>
                 <article className="summary-card">
-                  <span className="header-label">Surface</span>
+                  <span className="header-label">{copy.surface}</span>
                   <strong>{activeTheme?.tab?.background ?? '#ffffff'}</strong>
                   <span>{activeScheme.name}</span>
                 </article>
               </section>
 
               <section className="drawer-section studio-layout">
-                <div className="studio-list" aria-label="Themes">
+                <div className="studio-list" aria-label={copy.themeStudioTitle}>
                   {themeCatalog.map((theme) => {
                     const previewTheme = resolveUiTheme(
                       { ...settings, theme: theme.name },
@@ -1093,7 +1118,7 @@ function App() {
                         />
                         <div className="studio-list-copy">
                           <strong>{theme.name}</strong>
-                          <span>{isApplied ? 'active appearance' : 'saved appearance'}</span>
+                          <span>{isApplied ? copy.activeAppearance : copy.savedAppearance}</span>
                         </div>
                       </button>
                     )
@@ -1103,10 +1128,7 @@ function App() {
                 <div className="studio-form">
                   <div className="section-heading">
                     <strong>{themeDraft.name}</strong>
-                    <p>
-                      These fields write back to the shared `themes[]` payload and keep the shell
-                      surface flat.
-                    </p>
+                    <p>{copy.themeFieldsDescription}</p>
                   </div>
 
                   <div
@@ -1147,7 +1169,7 @@ function App() {
                           ),
                         }}
                       >
-                        selected
+                        {copy.selectedTab}
                       </span>
                       <span
                         className="theme-preview-tab"
@@ -1159,7 +1181,7 @@ function App() {
                           ),
                         }}
                       >
-                        idle
+                        {copy.idleTab}
                       </span>
                     </div>
                     <div
@@ -1179,7 +1201,7 @@ function App() {
 
                   <div className="field-grid field-grid-wide">
                     <label className="field-row field-row-span">
-                      <span>Theme name</span>
+                      <span>{copy.themeName}</span>
                       <input
                         className="field-input"
                         value={themeDraft.name}
@@ -1188,7 +1210,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>App appearance</span>
+                      <span>{copy.appAppearance}</span>
                       <select
                         className="field-input"
                         value={themeDraft.window?.applicationTheme ?? 'system'}
@@ -1201,14 +1223,14 @@ function App() {
                           })
                         }
                       >
-                        <option value="system">system</option>
-                        <option value="dark">dark</option>
-                        <option value="light">light</option>
+                        <option value="system">{copy.system}</option>
+                        <option value="dark">{copy.dark}</option>
+                        <option value="light">{copy.light}</option>
                       </select>
                     </label>
 
                     <ColorField
-                      label="Active frame"
+                      label={copy.activeFrame}
                       value={themeDraft.window?.frame}
                       fallback="#d8d8d8"
                       tokenPalette={activeColorPalette}
@@ -1217,7 +1239,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Inactive frame"
+                      label={copy.inactiveFrame}
                       value={themeDraft.window?.unfocusedFrame}
                       fallback="#cfcfcf"
                       tokenPalette={activeColorPalette}
@@ -1228,7 +1250,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Active tab"
+                      label={copy.activeTab}
                       value={themeDraft.tab?.background}
                       fallback="#ffffff"
                       tokenPalette={activeColorPalette}
@@ -1237,7 +1259,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Inactive tab"
+                      label={copy.inactiveTab}
                       value={themeDraft.tab?.unfocusedBackground}
                       fallback="#f4f4f4"
                       tokenPalette={activeColorPalette}
@@ -1248,7 +1270,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Tab strip"
+                      label={copy.tabStrip}
                       value={themeDraft.tabRow?.background}
                       fallback="#efefef"
                       tokenPalette={activeColorPalette}
@@ -1257,7 +1279,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Strip inactive"
+                      label={copy.stripInactive}
                       value={themeDraft.tabRow?.unfocusedBackground}
                       fallback="#e7e7e7"
                       tokenPalette={activeColorPalette}
@@ -1270,7 +1292,7 @@ function App() {
                     />
 
                     <label className="field-row field-row-span">
-                      <span>Close button</span>
+                      <span>{copy.closeButton}</span>
                       <select
                         className="field-input"
                         value={themeDraft.tab?.showCloseButton ?? 'hover'}
@@ -1284,15 +1306,15 @@ function App() {
                           })
                         }
                       >
-                        <option value="hover">hover</option>
-                        <option value="activeOnly">active only</option>
-                        <option value="always">always</option>
-                        <option value="never">never</option>
+                        <option value="hover">{copy.hover}</option>
+                        <option value="activeOnly">{copy.activeOnly}</option>
+                        <option value="always">{copy.always}</option>
+                        <option value="never">{copy.never}</option>
                       </select>
                     </label>
 
                     <label className="field-row field-row-toggle">
-                      <span>Mica tint</span>
+                      <span>{copy.micaTint}</span>
                       <input
                         type="checkbox"
                         checked={themeDraft.window?.useMica ?? false}
@@ -1309,21 +1331,21 @@ function App() {
                       className="toolbar-button"
                       onClick={() => void handleThemeDraftSave()}
                     >
-                      Save theme
+                      {copy.saveTheme}
                     </button>
                     <button
                       type="button"
                       className="toolbar-button ghost"
                       onClick={() => void handleThemeDraftApply()}
                     >
-                      Use on this shell
+                      {copy.useOnShell}
                     </button>
                     <button
                       type="button"
                       className="toolbar-button ghost"
                       onClick={handleThemeDraftReset}
                     >
-                      Reset
+                      {copy.reset}
                     </button>
                   </div>
                 </div>
@@ -1335,11 +1357,8 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Profile Studio</strong>
-                  <p>
-                    Edit launch command, prompt template, and terminal font behavior
-                    without leaving the shell.
-                  </p>
+                  <strong>{copy.profileStudioTitle}</strong>
+                  <p>{copy.profileStudioDescription}</p>
                 </div>
                 <div className="field-actions">
                   <button
@@ -1347,14 +1366,14 @@ function App() {
                     className="toolbar-button ghost"
                     onClick={() => void handleProfileCreate()}
                   >
-                    New profile
+                    {copy.newProfile}
                   </button>
                   <button
                     type="button"
                     className="toolbar-button ghost"
                     onClick={() => void handleProfileDuplicate()}
                   >
-                    Duplicate
+                    {copy.duplicate}
                   </button>
                   <button
                     type="button"
@@ -1362,13 +1381,13 @@ function App() {
                     onClick={() => void handleProfileDelete()}
                     disabled={profileCatalog.length <= 1}
                   >
-                    Delete
+                    {copy.delete}
                   </button>
                 </div>
               </div>
 
               <section className="drawer-section studio-layout">
-                <div className="studio-list" aria-label="Profiles">
+                <div className="studio-list" aria-label={copy.profileStudioTitle}>
                   {profileCatalog.map((profile) => {
                     const isSelected = profile.id === selectedProfileId
                     const isDefault = profile.id === defaultProfile.id
@@ -1383,10 +1402,14 @@ function App() {
                         <ProfileGlyph profile={profile} compact />
                         <div className="studio-list-copy">
                           <strong>{profile.name}</strong>
-                          <span>{profile.commandline ?? 'default shell'}</span>
+                          <span>{profile.commandline ?? copy.defaultShell}</span>
                         </div>
                         <span className="profile-badge">
-                          {isDefault ? 'default' : profile.hidden ? 'hidden' : 'live'}
+                          {isDefault
+                            ? copy.defaultBadge
+                            : profile.hidden
+                              ? copy.hidden
+                              : copy.liveBadge}
                         </span>
                       </button>
                     )
@@ -1404,21 +1427,21 @@ function App() {
                     </p>
                   </div>
 
-                  <section className="profile-preview" aria-label="Profile preview">
+                  <section className="profile-preview" aria-label={copy.profileStudioTitle}>
                     <div className="profile-preview-header">
                       <div className="profile-preview-identity">
                         <ProfileGlyph profile={profileDraft} />
                         <div className="profile-preview-copy">
                           <strong>{profileDraft.name}</strong>
-                          <span>{profileDraft.commandline ?? 'default shell'}</span>
+                          <span>{profileDraft.commandline ?? copy.defaultShell}</span>
                         </div>
                       </div>
                       <span className="profile-badge">
                         {profileDraft.hidden
-                          ? 'hidden'
+                          ? copy.hidden
                           : selectedProfileId === defaultProfile.id
-                            ? 'default'
-                            : 'ready'}
+                            ? copy.defaultBadge
+                            : copy.ready}
                       </span>
                     </div>
 
@@ -1436,7 +1459,7 @@ function App() {
                           'git status',
                         )}
                       </span>
-                      <span>On branch main</span>
+                      <span>{copy.onBranchMain}</span>
                     </div>
 
                     <div className="profile-preview-swatches" aria-hidden="true">
@@ -1444,32 +1467,32 @@ function App() {
                         className="profile-preview-chip"
                         style={{ '--preview-color': draftColorPalette.accent } as CSSProperties}
                       >
-                        tab
+                        {copy.tabChip}
                       </span>
                       <span
                         className="profile-preview-chip"
                         style={{ '--preview-color': draftColorPalette.terminalForeground } as CSSProperties}
                       >
-                        text
+                        {copy.textChip}
                       </span>
                       <span
                         className="profile-preview-chip"
                         style={{ '--preview-color': draftColorPalette.cursorColor } as CSSProperties}
                       >
-                        cursor
+                        {copy.cursorChip}
                       </span>
                       <span
                         className="profile-preview-chip"
                         style={{ '--preview-color': draftColorPalette.selectionBackground } as CSSProperties}
                       >
-                        selection
+                        {copy.selectionChip}
                       </span>
                     </div>
                   </section>
 
                   <div className="field-grid field-grid-wide">
                     <label className="field-row">
-                      <span>Profile name</span>
+                      <span>{copy.profileName}</span>
                       <input
                         className="field-input"
                         value={profileDraft.name}
@@ -1478,7 +1501,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Icon or badge</span>
+                      <span>{copy.iconOrBadge}</span>
                       <input
                         className="field-input"
                         value={profileDraft.icon ?? ''}
@@ -1488,7 +1511,7 @@ function App() {
                     </label>
 
                     <label className="field-row field-row-span">
-                      <span>Command line</span>
+                      <span>{copy.commandLine}</span>
                       <input
                         className="field-input"
                         value={profileDraft.commandline ?? ''}
@@ -1498,13 +1521,12 @@ function App() {
                         }
                       />
                       <span className="field-help">
-                        Leave this empty to follow the runtime default shell for{' '}
-                        {runtimeHostPlatformLabel(editorHostPlatform)}.
+                        {copy.commandLineHelp(runtimeHostPlatformLabel(editorHostPlatform))}
                       </span>
                     </label>
 
                     <label className="field-row field-row-span">
-                      <span>Starting directory</span>
+                      <span>{copy.startingDirectory}</span>
                       <input
                         className="field-input"
                         value={profileDraft.startingDirectory ?? ''}
@@ -1513,25 +1535,20 @@ function App() {
                           patchProfileDraft({ startingDirectory: event.target.value })
                         }
                       />
-                      <span className="field-help">
-                        Leave this empty to start from the runtime home directory.
-                      </span>
+                      <span className="field-help">{copy.startingDirectoryHelp}</span>
                     </label>
 
                     <label className="field-row field-row-span">
-                      <span>Prompt template</span>
+                      <span>{copy.promptTemplate}</span>
                       <input
                         className="field-input"
                         value={profileDraft.promptTemplate ?? ''}
-                        placeholder="{user}@{host}:{cwd}{symbol} "
+                        placeholder={copy.shellPromptPlaceholder}
                         onChange={(event) =>
                           patchProfileDraft({ promptTemplate: event.target.value })
                         }
                       />
-                      <span className="field-help">
-                        Use tokens to keep the shell prompt profile-aware without falling back to
-                        a generic prefix.
-                      </span>
+                      <span className="field-help">{copy.promptTemplateHelp}</span>
                       <div className="field-token-row">
                         {PROMPT_TEMPLATE_TOKENS.map((token) => (
                           <button
@@ -1549,17 +1566,17 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Tab title</span>
+                      <span>{copy.tabTitle}</span>
                       <input
                         className="field-input"
                         value={profileDraft.tabTitle ?? ''}
-                        placeholder="Optional label"
+                        placeholder={copy.optionalLabel}
                         onChange={(event) => patchProfileDraft({ tabTitle: event.target.value })}
                       />
                     </label>
 
                     <ColorField
-                      label="Tab accent"
+                      label={copy.tabAccent}
                       value={profileDraft.tabColor}
                       fallback="#3b78ff"
                       tokenPalette={draftColorPalette}
@@ -1568,7 +1585,7 @@ function App() {
                     />
 
                     <label className="field-row">
-                      <span>Color scheme</span>
+                      <span>{copy.colorScheme}</span>
                       <select
                         className="field-input"
                         value={selectedProfileSchemeName}
@@ -1585,7 +1602,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Font face</span>
+                      <span>{copy.fontFace}</span>
                       <input
                         className="field-input"
                         value={resolveProfileFontFace(profileDraft)}
@@ -1595,7 +1612,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Font size</span>
+                      <span>{copy.fontSize}</span>
                       <input
                         type="number"
                         className="field-input"
@@ -1609,7 +1626,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Line height</span>
+                      <span>{copy.lineHeight}</span>
                       <input
                         type="number"
                         step="0.01"
@@ -1624,7 +1641,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Cursor shape</span>
+                      <span>{copy.cursorShape}</span>
                       <select
                         className="field-input"
                         value={profileDraft.cursorShape ?? 'bar'}
@@ -1646,7 +1663,7 @@ function App() {
                     </label>
 
                     <RangeField
-                      label="Opacity"
+                      label={copy.opacity}
                       min={0}
                       max={100}
                       value={profileDraft.opacity ?? 100}
@@ -1658,7 +1675,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Shell background"
+                      label={copy.shellBackground}
                       value={profileDraft.background}
                       fallback={profileDraftScheme.background}
                       tokenPalette={draftColorPalette}
@@ -1667,7 +1684,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Shell text"
+                      label={copy.shellText}
                       value={profileDraft.foreground}
                       fallback={profileDraftScheme.foreground}
                       tokenPalette={draftColorPalette}
@@ -1676,7 +1693,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Cursor"
+                      label={copy.cursor}
                       value={profileDraft.cursorColor}
                       fallback={profileDraftScheme.cursorColor ?? '#ffffff'}
                       tokenPalette={draftColorPalette}
@@ -1685,7 +1702,7 @@ function App() {
                     />
 
                     <ColorField
-                      label="Selection"
+                      label={copy.selection}
                       value={profileDraft.selectionBackground}
                       fallback={profileDraftScheme.selectionBackground ?? '#264f78'}
                       tokenPalette={draftColorPalette}
@@ -1696,7 +1713,7 @@ function App() {
                     />
 
                     <label className="field-row field-row-toggle">
-                      <span>Acrylic blur</span>
+                      <span>{copy.acrylicBlur}</span>
                       <input
                         type="checkbox"
                         checked={profileDraft.useAcrylic ?? false}
@@ -1707,7 +1724,7 @@ function App() {
                     </label>
 
                     <label className="field-row field-row-toggle">
-                      <span>Hidden</span>
+                      <span>{copy.hiddenToggle}</span>
                       <input
                         type="checkbox"
                         checked={profileDraft.hidden ?? false}
@@ -1723,7 +1740,7 @@ function App() {
                       className="toolbar-button"
                       onClick={() => void handleProfileDraftSave()}
                     >
-                      Save profile
+                      {copy.saveProfile}
                     </button>
                     <button
                       type="button"
@@ -1731,7 +1748,7 @@ function App() {
                       onClick={() => void createSession(selectedProfileId)}
                       disabled={profileDraft.hidden === true}
                     >
-                      Open
+                      {copy.open}
                     </button>
                     <button
                       type="button"
@@ -1739,16 +1756,78 @@ function App() {
                       onClick={() => void handleProfileDraftDefault()}
                       disabled={profileDraft.hidden === true}
                     >
-                      Use at startup
+                      {copy.useAtStartup}
                     </button>
                     <button
                       type="button"
                       className="toolbar-button ghost"
                       onClick={handleProfileDraftReset}
                     >
-                      Reset
+                      {copy.reset}
                     </button>
                   </div>
+                </div>
+              </section>
+            </section>
+          ) : null}
+
+          {activeSettingsSection === 'language' ? (
+            <section className="drawer-panel">
+              <div className="section-heading">
+                <strong>{copy.languageStudioTitle}</strong>
+                <p>{copy.languageStudioDescription}</p>
+              </div>
+
+              <section className="drawer-section language-layout">
+                <article className="summary-card">
+                  <span className="header-label">{copy.languageMode}</span>
+                  <strong>{languageModeLabel(configuredLanguage, copy)}</strong>
+                  <span>{copy.languageSavedHint}</span>
+                </article>
+
+                <article className="summary-card">
+                  <span className="header-label">{copy.languageBrowserPreview}</span>
+                  <strong>{navigator.language}</strong>
+                  <span>{copy.languageSettingDescription}</span>
+                </article>
+              </section>
+
+              <section className="drawer-section">
+                <div className="section-heading">
+                  <strong>{copy.languageSampleTitle}</strong>
+                  <p>{copy.languageSampleBody}</p>
+                </div>
+
+                <div className="language-grid" role="list" aria-label={copy.languageMode}>
+                  {(
+                    [
+                      ['system', copy.languageSystem],
+                      ['en', copy.languageEnglish],
+                      ['ko', copy.languageKorean],
+                    ] satisfies Array<[UiLanguage, string]>
+                  ).map(([language, label]) => {
+                    const isActive = configuredLanguage === language
+
+                    return (
+                      <button
+                        key={language}
+                        type="button"
+                        className={`language-card ${isActive ? 'is-active' : ''}`}
+                        onClick={() => void handleLanguageChange(language)}
+                      >
+                        <span className="header-label">{copy.languageMode}</span>
+                        <strong>{label}</strong>
+                        <span>
+                          {language === 'system'
+                            ? copy.languageSettingDescription
+                            : copy.languageSavedHint}
+                        </span>
+                        <span className="status-pill subtle">
+                          {isActive ? copy.languageActive : copy.languageApply}
+                        </span>
+                      </button>
+                    )
+                  })}
                 </div>
               </section>
             </section>
@@ -1757,11 +1836,8 @@ function App() {
           {activeSettingsSection === 'json' ? (
             <section className="drawer-panel studio-editor">
               <div className="section-heading">
-                <strong>settings.json</strong>
-                <p>
-                  Comments and trailing commas stay valid in the editor, and unknown keys
-                  continue to round-trip.
-                </p>
+                <strong>{copy.settingsJsonTitle}</strong>
+                <p>{copy.settingsJsonDescription}</p>
               </div>
 
               <textarea
@@ -1786,14 +1862,14 @@ function App() {
                   onClick={() => void handleSettingsSave()}
                   disabled={!isDraftDirty}
                 >
-                  Save settings
+                  {copy.saveSettings}
                 </button>
                 <button
                   type="button"
                   className="toolbar-button ghost"
                   onClick={handleSettingsReset}
                 >
-                  Reset draft
+                  {copy.resetDraft}
                 </button>
               </div>
             </section>
@@ -1802,10 +1878,8 @@ function App() {
           {activeSettingsSection === 'shortcuts' ? (
             <section className="drawer-panel">
               <div className="section-heading">
-                <strong>Shortcuts</strong>
-                <p>
-                  Resolved from the shared `actions[]` payload, including object-form commands.
-                </p>
+                <strong>{copy.shortcutsTitle}</strong>
+                <p>{copy.shortcutsDescription}</p>
               </div>
 
               <section className="shortcut-list" aria-label="Keyboard shortcuts">
@@ -1829,7 +1903,7 @@ function App() {
         className={`terminal-shell ${isRailCollapsed ? 'is-rail-collapsed' : ''}`}
         data-rail-collapsed={isRailCollapsed}
       >
-        <section className="viewport-stage" aria-label="Terminal workspace">
+        <section className="viewport-stage" aria-label={copy.terminalWorkspace}>
           <div
             className={`terminal-stage ${activeWorkspace === 'settings' ? 'is-settings-workspace' : ''}`}
           >
@@ -1840,15 +1914,15 @@ function App() {
         <aside
           className={`session-rail ${isRailCollapsed ? 'is-collapsed' : ''}`}
           data-close-mode={closeButtonMode}
-          aria-label="Session rail"
+          aria-label={copy.sessionRail}
         >
           <div className="rail-head">
             <button
               type="button"
               className="rail-toggle"
-              aria-label={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+              aria-label={isRailCollapsed ? copy.showSessionRail : copy.hideSessionRail}
               onClick={toggleRail}
-              title={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+              title={isRailCollapsed ? copy.showSessionRail : copy.hideSessionRail}
             >
               <RailToggleIcon collapsed={isRailCollapsed} />
             </button>
@@ -1859,8 +1933,8 @@ function App() {
                 className={`rail-action rail-action-settings ${
                   activeWorkspace === 'settings' ? 'is-active' : ''
                 }`}
-                aria-label="Open settings"
-                title="Open settings"
+                aria-label={copy.openSettings}
+                title={copy.openSettings}
                 onClick={() => revealSettings('appearance')}
               >
                 <SettingsGlyph />
@@ -1868,7 +1942,7 @@ function App() {
             ) : null}
           </div>
 
-          <div className="rail-list" role="tablist" aria-label="Workspaces">
+          <div className="rail-list" role="tablist" aria-label={copy.workspaces}>
             {isSettingsOpen ? (
               <div className={`rail-tab-shell ${activeWorkspace === 'settings' ? 'is-active' : ''}`}>
                 <button
@@ -1876,7 +1950,7 @@ function App() {
                   className="rail-tab rail-tab-settings"
                   role="tab"
                   aria-selected={activeWorkspace === 'settings'}
-                  aria-label="Settings tab"
+                  aria-label={copy.settingsTab}
                   title={settingsSectionMeta.label}
                   onClick={() => setActiveWorkspace('settings')}
                 >
@@ -1892,7 +1966,7 @@ function App() {
                     type="button"
                     className="rail-tab-close"
                     onClick={closeSettingsWorkspace}
-                    aria-label="Close settings"
+                    aria-label={copy.closeSettings}
                   >
                     <CloseGlyph />
                   </button>
@@ -1919,7 +1993,7 @@ function App() {
                     className="rail-tab"
                     role="tab"
                     aria-selected={isActive}
-                    aria-label={`${tabLabel} tab`}
+                    aria-label={copy.profileTab(tabLabel)}
                     title={`${tabLabel} · ${profile.name}`}
                     onClick={() => activateSession(tab.paneIds[0])}
                   >
@@ -1940,7 +2014,7 @@ function App() {
                       type="button"
                       className="rail-tab-close"
                       onClick={() => void closeTab(tab.id)}
-                      aria-label={`Close ${tabLabel}`}
+                      aria-label={copy.closeTab(tabLabel)}
                     >
                       <CloseGlyph />
                     </button>
@@ -1954,8 +2028,8 @@ function App() {
             <button
               type="button"
               className="rail-action is-primary"
-              aria-label="New tab"
-              title="New tab"
+              aria-label={copy.newTab}
+              title={copy.newTab}
               onClick={() => void createSession()}
             >
               <NewTabGlyph />
@@ -1963,8 +2037,8 @@ function App() {
             <button
               type="button"
               className="rail-action"
-              aria-label="Split vertical"
-              title="Split vertical"
+              aria-label={copy.splitVertical}
+              title={copy.splitVertical}
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'vertical')}
             >
@@ -1973,8 +2047,8 @@ function App() {
             <button
               type="button"
               className="rail-action"
-              aria-label="Split horizontal"
-              title="Split horizontal"
+              aria-label={copy.splitHorizontal}
+              title={copy.splitHorizontal}
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'horizontal')}
             >
@@ -1983,8 +2057,8 @@ function App() {
             <button
               type="button"
               className={`rail-action ${activeWorkspace === 'settings' ? 'is-active' : ''}`}
-              aria-label="Edit settings.json"
-              title="Edit settings.json"
+              aria-label={copy.editSettingsJson}
+              title={copy.editSettingsJson}
               onClick={() => revealSettings('json')}
             >
               <CodeGlyph />
@@ -2307,6 +2381,7 @@ function normalizeSettings(payload: unknown): TerminalSettings {
             keys: asStringArray(action.keys, []),
           }))
       : demoSettings.actions,
+    webpty: normalizeWebptySettings(payload.webpty) ?? demoSettings.webpty,
     profiles: {
       defaults: isRecord(payload.profiles.defaults)
         ? normalizeProfileDefaults(payload.profiles.defaults)
@@ -2396,6 +2471,19 @@ function ensureLaunchableDefaultProfile(settings: TerminalSettings): TerminalSet
     ...settings,
     defaultProfile: profileIdentifier(launchableProfile),
   }
+}
+
+function normalizeWebptySettings(payload: unknown): TerminalSettings['webpty'] {
+  if (!isRecord(payload)) {
+    return undefined
+  }
+
+  const language = normalizeUiLanguage(payload.language)
+  return language ? { language } : undefined
+}
+
+function normalizeUiLanguage(value: unknown): UiLanguage | undefined {
+  return value === 'system' || value === 'en' || value === 'ko' ? value : undefined
 }
 
 function normalizeProfile(payload: unknown): TerminalProfile | null {
@@ -2961,6 +3049,17 @@ function updateThemeSelectionDocument(
   }
 }
 
+function updateLanguageDocument(
+  document: Record<string, unknown>,
+  language: UiLanguage,
+) {
+  const nextDocument = cloneSettingsDocument(document)
+  assignNestedRecord(nextDocument, 'webpty', {
+    language,
+  })
+  return nextDocument
+}
+
 function createThemeDraft(existingThemes: TerminalTheme[]): TerminalTheme {
   return {
     name: nextUniqueLabel(
@@ -3406,6 +3505,21 @@ function SettingsSectionIcon({
           stroke="currentColor"
           strokeLinecap="round"
           strokeWidth="1.4"
+        />
+      </svg>
+    )
+  }
+
+  if (section === 'language') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M3.2 4.1h5.8M6.1 4.1c0 3-1.6 5.2-3.2 6.6M5 7.2c1 1.3 2.5 2.5 4.3 3.2M10.8 3.3l2 6.1M9.9 6.6h5.2"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.2"
         />
       </svg>
     )

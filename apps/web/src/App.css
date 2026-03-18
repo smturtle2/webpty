@@ -1890,11 +1890,11 @@ select.field-input {
 }
 
 .terminal-shell {
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 44px;
 }
 
 .terminal-shell.is-rail-collapsed {
-  grid-template-columns: minmax(0, 1fr) 10px;
+  grid-template-columns: minmax(0, 1fr) 18px;
 }
 
 .settings-workspace {
@@ -1916,7 +1916,8 @@ select.field-input {
 .settings-editor,
 .drawer-nav,
 .drawer-nav-item,
-.drawer-status-card {
+.drawer-status-card,
+.language-card {
   border-radius: 8px;
 }
 
@@ -1945,7 +1946,8 @@ select.field-input {
 }
 
 .summary-card,
-.shortcut-row {
+.shortcut-row,
+.language-card {
   padding: 12px;
   background: #ffffff;
 }
@@ -2009,38 +2011,66 @@ select.field-input {
   min-height: 480px;
 }
 
+.language-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.language-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.language-card {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  border: 1px solid #d2d2d2;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.language-card.is-active {
+  border-color: #b7b7b7;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .session-rail {
-  gap: 2px;
-  padding: 3px 0 3px 1px;
+  gap: 4px;
+  padding: 6px 2px 6px 4px;
+  border-left: 1px solid #d7d7d7;
   background: #f3f3f3;
 }
 
 .rail-head,
 .rail-footer {
-  gap: 2px;
+  gap: 4px;
 }
 
 .rail-toggle,
 .rail-action {
-  min-height: 22px;
-  border-radius: 5px;
-  background: #fafafa;
+  min-height: 28px;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .rail-toggle svg,
 .rail-action svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .rail-tab {
-  min-height: 60px;
+  min-height: 70px;
   display: grid;
   justify-items: center;
-  align-content: start;
-  gap: 4px;
-  padding: 6px 0 7px;
-  border-radius: 6px 0 0 6px;
+  align-content: center;
+  gap: 0;
+  padding: 10px 0;
+  border-radius: 10px 0 0 10px;
   background: #f6f6f6;
 }
 
@@ -2049,64 +2079,74 @@ select.field-input {
 }
 
 .rail-tab::before {
-  top: 5px;
-  bottom: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
 }
 
 .rail-tab-status {
-  top: 5px;
-  right: 4px;
-  width: 4px;
-  height: 4px;
+  top: 7px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .rail-tab-icon .profile-glyph.is-compact {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  font-size: 7px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 8px;
 }
 
 .rail-tab-copy {
-  max-height: 30px;
-  min-width: 0;
-  display: block;
-  overflow: hidden;
-  color: #6d6d6d;
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  line-height: 1;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
+  display: none;
 }
 
 .rail-tab-meta {
-  right: 4px;
-  bottom: 4px;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 3px;
-  font-size: 6px;
+  right: 6px;
+  bottom: 6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  font-size: 7px;
 }
 
 .rail-tab-close {
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
 }
 
 .rail-tab-close svg {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+}
+
+.session-rail.is-collapsed {
+  padding: 6px 0;
+}
+
+.session-rail.is-collapsed .rail-head {
+  justify-items: center;
+}
+
+.session-rail.is-collapsed .rail-action-settings,
+.session-rail.is-collapsed .rail-list,
+.session-rail.is-collapsed .rail-footer {
+  display: none;
 }
 
 .session-rail.is-collapsed .rail-toggle {
-  min-height: 36px;
+  width: 14px;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.pane-badge {
+  display: none !important;
 }
 
 .drawer-header strong,
@@ -2116,7 +2156,8 @@ select.field-input {
 .summary-card strong,
 .studio-list-copy strong,
 .profile-preview-copy strong,
-.shortcut-row strong {
+.shortcut-row strong,
+.language-card strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2131,7 +2172,8 @@ select.field-input {
 .studio-list-copy span,
 .profile-preview-copy span,
 .field-help,
-.settings-error {
+.settings-error,
+.language-card span:not(.header-label):not(.status-pill) {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -2166,11 +2208,17 @@ select.field-input {
 
 @media (max-width: 960px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 34px;
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .terminal-shell.is-rail-collapsed {
+    grid-template-columns: minmax(0, 1fr) 18px;
   }
 
   .drawer-layout,
-  .studio-layout {
+  .studio-layout,
+  .language-layout,
+  .language-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2180,29 +2228,19 @@ select.field-input {
 }
 
 @media (max-width: 640px) {
-  .settings-workspace {
-    background: #f3f3f3;
-  }
-
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: minmax(0, 1fr) 36px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 8px;
+    grid-template-columns: minmax(0, 1fr) 18px;
   }
 
   .session-rail {
-    padding-left: 0;
+    padding-left: 2px;
   }
 
   .rail-tab {
-    min-height: 54px;
-    gap: 3px;
-  }
-
-  .rail-tab-copy {
-    max-height: 24px;
-    font-size: 5px;
+    min-height: 62px;
   }
 }

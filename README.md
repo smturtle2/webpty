@@ -30,6 +30,12 @@ accepts JSONC-style comments and trailing commas.
 
 ![webpty profile studio](./docs/assets/webpty-profile-studio.png)
 
+![webpty language studio](./docs/assets/webpty-language-studio.png)
+
+![webpty settings json](./docs/assets/webpty-settings-json.png)
+
+![webpty collapsed rail](./docs/assets/webpty-collapsed-rail.png)
+
 ## Current Status
 
 Implemented:
@@ -44,6 +50,7 @@ Implemented:
 - tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
 - dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
 - dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
+- dedicated Language section backed by `webpty.language` for English / Korean / system-following UI copy
 - stable Theme Studio / Profile Studio draft syncing with no recursive render-loop console errors
 - in-app create / duplicate / delete flows for profile and theme entries
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
@@ -71,11 +78,12 @@ Implemented:
 - stricter launch cwd validation so file paths do not become session working directories
 - safer Funnel cleanup and broader capability detection during startup and shutdown
 - vertical and horizontal split creation inside the active tab
-- visible split-pane identity badges and stronger active-pane framing inside the terminal workspace
+- subtler split-pane separators and active-pane framing without floating badge overlays
 - WebSocket input/output streaming and PTY resize handling
 - browser-safe profile icon sources rendered in the rail and settings workspace
 - embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
-- flatter Windows 11-style rail and settings surfaces with tighter density and broader text-overflow protection
+- icon-first right rail with safe collapsed bounds, tighter density, and broader text-overflow protection
+- reproducible screenshot refresh through `npm run docs:shots`
 - refreshed repository screenshots captured from the sample settings catalog for stable docs output
 
 Known gaps:
@@ -99,6 +107,9 @@ Known gaps:
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
+If `webpty` is not found after install, add Cargo's bin directory to `PATH`
+(`$HOME/.cargo/bin` on Linux/macOS).
+
 Local checkout install:
 
 ```bash
@@ -110,6 +121,8 @@ cargo install --path apps/server --bin webpty --locked
 ```bash
 webpty up
 ```
+
+The local shell opens at `http://127.0.0.1:3001` by default.
 
 Run with the repository sample settings:
 
@@ -133,6 +146,7 @@ before allocating Funnel. For headless bootstrap flows, `webpty` also honors
 If interactive login is still required, `webpty` prints the Tailscale auth URL
 and exits cleanly. Treat Funnel as public exposure of the shell surface and only
 use it behind a trusted machine and network policy.
+Keep `--host` on loopback or all interfaces when using `--funnel`.
 
 ## Settings Path
 
@@ -192,6 +206,7 @@ re-embeds updated frontend assets automatically.
 npm run build:web
 cargo test --manifest-path apps/server/Cargo.toml
 cargo check
+npm run docs:shots
 ```
 
 ## Ship Changes

@@ -17,6 +17,12 @@ export interface TerminalFontSettings {
   cellHeight?: number
 }
 
+export type UiLanguage = 'system' | 'en' | 'ko'
+
+export interface WebptySettings {
+  language?: UiLanguage
+}
+
 export type ThemeSelection =
   | string
   | {
@@ -124,6 +130,7 @@ export interface TerminalSettings {
   theme?: ThemeSelection
   themes?: TerminalTheme[]
   actions?: TerminalAction[]
+  webpty?: WebptySettings
   profiles: {
     defaults?: Partial<TerminalProfile>
     list: TerminalProfile[]

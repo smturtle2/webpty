@@ -390,9 +390,20 @@ struct TerminalSettings {
     themes: Vec<TerminalTheme>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     actions: Vec<TerminalAction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    webpty: Option<WebptySettingsOptions>,
     profiles: TerminalProfiles,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     schemes: Vec<TerminalColorScheme>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct WebptySettingsOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    language: Option<String>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -2647,6 +2658,10 @@ fn default_settings_for_host(host: HostPlatform) -> TerminalSettings {
         theme: Some(ThemeSelection::Named("Classic".to_string())),
         themes: default_theme_catalog(),
         actions: default_action_catalog(),
+        webpty: Some(WebptySettingsOptions {
+            language: Some("system".to_string()),
+            extra: JsonMap::new(),
+        }),
         profiles: TerminalProfiles {
             defaults: Some(default_profile_defaults()),
             list: profiles,
@@ -3573,6 +3588,13 @@ mod tests {
             .expect("linux defaults should include a primary profile");
 
         assert_eq!(settings.default_profile, HOST_SHELL_PROFILE_GUID);
+        assert_eq!(
+            settings
+                .webpty
+                .as_ref()
+                .and_then(|options| options.language.as_deref()),
+            Some("system")
+        );
         assert_eq!(primary.name, "Bash");
         assert_eq!(primary.commandline.as_deref(), Some("/bin/bash"));
         assert_eq!(primary.starting_directory.as_deref(), Some("~"));
@@ -3600,6 +3622,13 @@ mod tests {
             .expect("windows defaults should include a primary profile");
 
         assert_eq!(settings.default_profile, POWERSHELL_PROFILE_GUID);
+        assert_eq!(
+            settings
+                .webpty
+                .as_ref()
+                .and_then(|options| options.language.as_deref()),
+            Some("system")
+        );
         assert_eq!(primary.name, "PowerShell");
         assert_eq!(primary.commandline.as_deref(), Some("pwsh.exe"));
         assert!(

@@ -15,6 +15,7 @@ Top level:
 - `theme`
 - `themes`
 - `actions`
+- optional `webpty.language`
 - `profiles.defaults`
 - `profiles.list`
 - `schemes`
@@ -79,6 +80,7 @@ Action fields currently mapped by the frontend:
 - the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
+- the in-app Language section can persist `webpty.language` as `system`, `en`, or `ko`
 - Theme Studio and Profile Studio draft syncing avoids self-triggered render loops while switching entries or reloading runtime settings
 - `GET /api/health` now includes `hostPlatform` so the UI can keep Profile Studio command and directory hints aligned with the runtime OS
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
@@ -111,8 +113,9 @@ Action fields currently mapped by the frontend:
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
 - Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
 - the shipped UI keeps the terminal dominant, the right rail thin and hideable, and the settings workspace as a full tab rather than a floating overlay
+- the right rail now uses icon-first tabs with safe collapsed bounds so the toggle does not escape the viewport
 - the terminal viewport now reruns fit passes after mount and font load so narrow/mobile shells settle onto the visible width instead of keeping the initial off-canvas geometry
-- split panes keep visible badge chrome and active borders so pane identity remains readable without a top toolbar
+- split panes keep subtle separators and active borders without floating badge chrome
 
 ## Known Gaps
 

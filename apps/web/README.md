@@ -8,6 +8,7 @@ This package contains the React/Vite frontend for `webpty`.
 - keep the thin right-side session rail in sync with runtime sessions
 - support rail show/hide and split creation without adding top chrome
 - present a sectioned settings workspace tab without adding top chrome
+- localize shell chrome and settings copy through `webpty.language`
 - load and save the shared settings schema subset
 - accept JSONC-style comments and trailing commas in the in-app editor
 - resolve both string and object-form action commands from `actions[]`

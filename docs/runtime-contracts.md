@@ -48,7 +48,8 @@ Serves the embedded production web UI bundled into the Rust binary.
 ### `GET /api/settings`
 
 Returns the current shared `settings.json` subset loaded from the active
-settings path.
+settings path. The payload can also include `webpty.language` for UI-language
+selection.
 
 Default path selection:
 
@@ -151,6 +152,8 @@ Connection behavior:
 - `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` during automatic bootstrap and otherwise prints the interactive auth URL when login is still required
 - `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit, including timeout / SIGTERM-style shutdown paths
 - the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
+- the settings workspace includes Theme, Profile, Language, JSON, and Shortcut sections
 - the frontend uses `hostPlatform` from `/api/health` to keep Profile Studio command and directory placeholders host-aware
-- split panes keep visible badge chrome and active-pane framing inside the terminal workspace
+- the frontend can persist `webpty.language` as `system`, `en`, or `ko`
+- split panes keep subtle separators and active-pane framing inside the terminal workspace
 - advanced pane graphs, search, and command palette remain future milestones

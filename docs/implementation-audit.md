@@ -8,7 +8,7 @@ This pass checked the repo against the current product constraints:
 - external exposure through `webpty up --funnel`
 - black terminal-first layout with a thin right rail and no persistent top toolbar
 - shared `settings.json` compatibility for profiles and themes
-- dedicated settings tab with profile/theme editing UX
+- dedicated settings tab with profile/theme/language editing UX
 - per-profile prompt shaping instead of a generic `bash-5.2$`
 
 ## Findings Addressed In This Pass
@@ -31,12 +31,16 @@ This pass checked the repo against the current product constraints:
 - corrected the macOS user-scoped settings path to `~/Library/Application Support/webpty/settings.json`
 - flattened the right rail and split-pane treatment toward the thinner shell-first layout used by the product spec
 - tightened the right rail, settings panels, and preview surfaces further so the chrome stays flatter and text is less likely to escape its container
+- added a first-class Language section and `webpty.language` setting so the shell UI can switch between English, Korean, and system-following copy
+- moved the right rail to an icon-first tab treatment so collapsed mode stays inside the viewport instead of clipping the toggle off-canvas
+- removed floating split-pane badges in favor of subtler separators and active borders
 - removed a Theme/Profile Studio draft-sync render loop that could trigger repeated `Maximum update depth exceeded` errors in the browser console
 - aligned Profile Studio prompt previews with the runtime `{profile}` sanitization path
 - stabilized xterm fitting with repeated post-mount passes so narrow and mobile widths no longer keep the initial off-canvas geometry
 - surfaced runtime host metadata to the UI so Profile Studio placeholders reflect the actual execution OS
 - surfaced split-pane identity chrome with visible pane badges and stronger active-pane framing
 - refreshed the documentation screenshots from the running app after the latest UI pass
+- added a reproducible screenshot capture script (`npm run docs:shots`) so docs assets can be regenerated from the sample settings catalog
 - aligned the docs with the current Theme Studio / Profile Studio naming that ships in the interface
 
 ## Confirmed Working
@@ -44,7 +48,7 @@ This pass checked the repo against the current product constraints:
 - Rust PTY backend, embedded UI serving, and `webpty up`
 - external exposure through `webpty up --funnel`
 - shared `settings.json` loading, persistence, JSONC parsing, and unknown-key round-trip
-- right-rail settings workspace with separate Theme Studio, Profile Studio, JSON, and shortcut surfaces
+- right-rail settings workspace with separate Theme Studio, Profile Studio, Language, JSON, and shortcut surfaces
 - color-picker driven theme/profile editing plus token shortcut chips and direct JSON editing
 - readable full-value color editing in Theme Studio and Profile Studio
 - per-profile prompt shaping on non-Windows hosts, including plain shell profile launches
@@ -56,7 +60,8 @@ This pass checked the repo against the current product constraints:
 - host-scoped default profile generation and host-native settings paths
 - runtime host-aware placeholder hints inside Profile Studio
 - stable Theme/Profile draft syncing without recursive render-loop churn
-- visible split-pane identity chrome inside the terminal workspace
+- icon-first right rail with safe collapsed bounds
+- subtle split-pane separators and active-pane framing inside the terminal workspace
 - broader text-overflow protection in the right rail and settings workspace
 
 ## Remaining Gaps
