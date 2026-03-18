@@ -1759,6 +1759,19 @@ fn build_launch_plan(profile: &TerminalProfile, cwd_override: Option<String>) ->
     let cwd = resolve_launch_cwd(requested_dir.as_deref(), &mut notes);
 
     if let Some(commandline) = profile.commandline.as_deref() {
+        if let Some(builder) = powershell_command_builder(commandline, Some(profile), &mut notes) {
+            let fallback = default_shell_builder(Some(profile));
+
+            return LaunchPlan {
+                command: builder,
+                command_label: commandline.to_string(),
+                fallback_command: Some(fallback.clone()),
+                fallback_label: Some(default_shell_label()),
+                cwd,
+                notes,
+            };
+        }
+
         #[cfg(not(target_os = "windows"))]
         if let Some(builder) = adapt_windows_commandline_to_host(commandline, &mut notes) {
             let fallback = default_shell_builder(Some(profile));
@@ -1953,6 +1966,368 @@ fn parse_commandline_args(commandline: &str) -> Option<Vec<String>> {
     {
         shlex::split(commandline)
     }
+}
+
+#[derive(Debug, Default)]
+struct PowerShellInvocation {
+    passthrough_args: Vec<String>,
+    command: Option<String>,
+    file: Option<String>,
+    file_args: Vec<String>,
+}
+
+fn powershell_command_builder(
+    commandline: &str,
+    profile: Option<&TerminalProfile>,
+    notes: &mut Vec<String>,
+) -> Option<CommandBuilder> {
+    let args = parse_commandline_args(commandline)?;
+    let executable = args.first()?;
+    if !is_powershell_program(&program_name_any(executable)) {
+        return None;
+    }
+
+    let program = resolve_powershell_program(executable, commandline, notes)?;
+    let mut builder = build_powershell_builder(&program, &args[1..], profile);
+
+    #[cfg(not(target_os = "windows"))]
+    maybe_apply_primary_profile_prompt(&mut builder, commandline, profile);
+
+    notes.push(format!(
+        "normalized `{commandline}` to a PowerShell prompt-aware launch so the session prompt matches the selected profile."
+    ));
+
+    Some(builder)
+}
+
+fn build_powershell_builder(
+    program: &str,
+    original_args: &[String],
+    profile: Option<&TerminalProfile>,
+) -> CommandBuilder {
+    let invocation = parse_powershell_invocation(original_args);
+    let mut builder = CommandBuilder::new(program);
+    builder.env("TERM", "xterm-256color");
+
+    for argument in &invocation.passthrough_args {
+        builder.arg(argument);
+    }
+
+    builder.arg("-NoExit");
+    builder.arg("-Command");
+    builder.arg(build_powershell_bootstrap_script(profile, &invocation));
+    builder
+}
+
+fn parse_powershell_invocation(original_args: &[String]) -> PowerShellInvocation {
+    let mut invocation = PowerShellInvocation::default();
+    let mut index = 0;
+
+    while index < original_args.len() {
+        let argument = &original_args[index];
+        let lowered = argument.to_ascii_lowercase();
+
+        if matches!(lowered.as_str(), "-noexit" | "-noe") {
+            index += 1;
+            continue;
+        }
+
+        if matches!(lowered.as_str(), "-command" | "-c") {
+            let command = original_args[index + 1..].join(" ");
+            if !command.trim().is_empty() {
+                invocation.command = Some(command);
+            }
+            break;
+        }
+
+        if let Some((flag, value)) = argument.split_once(':')
+            && matches!(flag.to_ascii_lowercase().as_str(), "-command" | "-c")
+        {
+            if !value.trim().is_empty() {
+                invocation.command = Some(value.to_string());
+            }
+            break;
+        }
+
+        if matches!(lowered.as_str(), "-file" | "-f") {
+            invocation.file = original_args.get(index + 1).cloned();
+            invocation.file_args = if index + 2 <= original_args.len() {
+                original_args[index + 2..].to_vec()
+            } else {
+                Vec::new()
+            };
+            break;
+        }
+
+        if let Some((flag, value)) = argument.split_once(':')
+            && matches!(flag.to_ascii_lowercase().as_str(), "-file" | "-f")
+        {
+            if !value.trim().is_empty() {
+                invocation.file = Some(value.to_string());
+            }
+            invocation.file_args = if index + 1 <= original_args.len() {
+                original_args[index + 1..].to_vec()
+            } else {
+                Vec::new()
+            };
+            break;
+        }
+
+        invocation.passthrough_args.push(argument.clone());
+        index += 1;
+    }
+
+    invocation
+}
+
+fn build_powershell_bootstrap_script(
+    profile: Option<&TerminalProfile>,
+    invocation: &PowerShellInvocation,
+) -> String {
+    let mut script = format!(
+        "function global:prompt {{ {} }}",
+        powershell_prompt_script_body(profile)
+    );
+
+    if let Some(command) = invocation
+        .command
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        script.push_str("; ");
+        script.push_str(command);
+        return script;
+    }
+
+    if let Some(file) = invocation
+        .file
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        script.push_str("; & ");
+        script.push_str(&powershell_string_literal(file));
+
+        for argument in &invocation.file_args {
+            script.push(' ');
+            script.push_str(&powershell_string_literal(argument));
+        }
+    }
+
+    script
+}
+
+fn powershell_prompt_script_body(profile: Option<&TerminalProfile>) -> String {
+    let template = powershell_prompt_template(profile);
+    format!(
+        "return ({});",
+        powershell_prompt_expression(&template, profile)
+    )
+}
+
+fn powershell_prompt_template(profile: Option<&TerminalProfile>) -> String {
+    let Some(profile) = profile else {
+        return "PS {cwd}> ".to_string();
+    };
+
+    if let Some(template) = prompt_template_value(profile) {
+        return template.to_string();
+    }
+
+    let profile_name = profile.name.trim();
+    let normalized_name = profile_name.to_ascii_lowercase();
+    let commandline = profile.commandline.as_deref().unwrap_or_default().to_ascii_lowercase();
+    let sanitized_profile = sanitize_prompt_label_generic(profile_name);
+
+    if normalized_name.contains("powershell") || commandline.contains("pwsh") {
+        if normalized_name == "powershell" {
+            return "PS {cwd}> ".to_string();
+        }
+
+        return format!("PS({sanitized_profile}) {{cwd}}> ");
+    }
+
+    format!("[{sanitized_profile}] {{cwd}}> ")
+}
+
+fn powershell_prompt_expression(template: &str, profile: Option<&TerminalProfile>) -> String {
+    let mut parts = Vec::new();
+    let mut cursor = 0;
+    let tokens = ["{cwd}", "{dir}", "{user}", "{host}", "{profile}", "{name}", "{symbol}"];
+
+    while cursor < template.len() {
+        let remaining = &template[cursor..];
+        let next = tokens
+            .iter()
+            .filter_map(|token| remaining.find(token).map(|index| (*token, index)))
+            .min_by_key(|(_, index)| *index);
+
+        let Some((token, index)) = next else {
+            parts.push(powershell_string_literal(remaining));
+            break;
+        };
+
+        if index > 0 {
+            parts.push(powershell_string_literal(&remaining[..index]));
+        }
+
+        if let Some(expression) = powershell_prompt_token_expression(token, profile) {
+            parts.push(expression);
+        }
+
+        cursor += index + token.len();
+    }
+
+    if parts.is_empty() {
+        powershell_string_literal(template)
+    } else {
+        parts.join(" + ")
+    }
+}
+
+fn powershell_prompt_token_expression(
+    token: &str,
+    profile: Option<&TerminalProfile>,
+) -> Option<String> {
+    match token {
+        "{cwd}" => Some("(Get-Location)".to_string()),
+        "{dir}" => Some("(Split-Path -Leaf (Get-Location))".to_string()),
+        "{user}" => Some("([Environment]::UserName)".to_string()),
+        "{host}" => Some(powershell_string_literal(&powershell_host_label(profile))),
+        "{profile}" => Some(powershell_string_literal(&prompt_profile_label(profile))),
+        "{name}" => Some(powershell_string_literal(
+            profile.map(|entry| entry.name.trim()).unwrap_or("webpty"),
+        )),
+        "{symbol}" => Some(powershell_string_literal(">")),
+        _ => None,
+    }
+}
+
+fn powershell_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn powershell_host_label(profile: Option<&TerminalProfile>) -> String {
+    profile
+        .and_then(|entry| entry.commandline.as_deref())
+        .and_then(wsl_distribution_label_generic)
+        .or_else(prompt_runtime_hostname)
+        .unwrap_or_else(|| "shell".to_string())
+}
+
+fn prompt_profile_label(profile: Option<&TerminalProfile>) -> String {
+    profile
+        .map(|entry| sanitize_prompt_label_generic(entry.name.trim()))
+        .unwrap_or_else(|| "webpty".to_string())
+}
+
+fn prompt_runtime_hostname() -> Option<String> {
+    ["COMPUTERNAME", "HOSTNAME"]
+        .into_iter()
+        .find_map(|key| env::var(key).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn prompt_template_value(profile: &TerminalProfile) -> Option<&str> {
+    profile
+        .webpty
+        .as_ref()
+        .and_then(|options| options.prompt.as_deref())
+        .filter(|prompt| !prompt.trim().is_empty())
+}
+
+fn is_powershell_program(program: &str) -> bool {
+    matches!(
+        program,
+        "pwsh" | "pwsh.exe" | "powershell" | "powershell.exe"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_powershell_program(
+    executable: &str,
+    _commandline: &str,
+    _notes: &mut Vec<String>,
+) -> Option<String> {
+    Some(executable.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn resolve_powershell_program(
+    executable: &str,
+    commandline: &str,
+    notes: &mut Vec<String>,
+) -> Option<String> {
+    let normalized = program_name_any(executable);
+    if matches!(normalized.as_str(), "pwsh.exe" | "powershell.exe") {
+        let local_program = first_available_program(&["pwsh", "powershell"])?;
+        notes.push(format!(
+            "mapped `{commandline}` to the local `{local_program}` executable."
+        ));
+        return Some(local_program);
+    }
+
+    Some(executable.to_string())
+}
+
+fn sanitize_prompt_label_generic(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric()
+                || *character == '-'
+                || *character == '_'
+                || *character == '.'
+        })
+        .collect::<String>();
+
+    if sanitized.is_empty() {
+        "webpty".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn wsl_distribution_label_generic(commandline: &str) -> Option<String> {
+    let args = parse_commandline_args(commandline)?;
+    let program = program_name_any(args.first()?);
+
+    if program != "wsl" && program != "wsl.exe" {
+        return None;
+    }
+
+    let mut index = 1;
+    while index < args.len() {
+        let argument = &args[index];
+        let lowered = argument.to_ascii_lowercase();
+
+        if matches!(lowered.as_str(), "-d" | "--distribution") {
+            let distribution = args.get(index + 1)?;
+            let label = sanitize_prompt_label_generic(&distribution.to_ascii_lowercase());
+            return (!label.is_empty()).then_some(label);
+        }
+
+        if let Some((flag, value)) = lowered.split_once('=')
+            && matches!(flag, "-d" | "--distribution")
+        {
+            let label = sanitize_prompt_label_generic(value);
+            return (!label.is_empty()).then_some(label);
+        }
+
+        index += 1;
+    }
+
+    None
+}
+
+fn program_name_any(program: &str) -> String {
+    program
+        .rsplit(|character| character == '/' || character == '\\')
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase()
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2230,11 +2605,7 @@ fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
 
 #[cfg(not(windows))]
 fn configured_profile_prompt(profile: &TerminalProfile) -> Option<String> {
-    let template = profile
-        .webpty
-        .as_ref()
-        .and_then(|options| options.prompt.as_deref())
-        .filter(|prompt| !prompt.trim().is_empty())?;
+    let template = prompt_template_value(profile)?;
 
     let profile_name = profile.name.trim();
     let commandline = profile.commandline.as_deref().unwrap_or_default();
@@ -3329,6 +3700,95 @@ mod tests {
         };
 
         assert_eq!(profile_prompt(Some(&profile)), "\\u@ops:\\w\\$ ");
+    }
+
+    #[test]
+    fn parse_powershell_invocation_preserves_passthrough_and_command() {
+        let invocation = parse_powershell_invocation(&[
+            "-NoLogo".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-NoExit".to_string(),
+            "-Command".to_string(),
+            "kubectl".to_string(),
+            "config".to_string(),
+            "current-context".to_string(),
+        ]);
+
+        assert_eq!(
+            invocation.passthrough_args,
+            vec![
+                "-NoLogo".to_string(),
+                "-ExecutionPolicy".to_string(),
+                "Bypass".to_string()
+            ]
+        );
+        assert_eq!(
+            invocation.command.as_deref(),
+            Some("kubectl config current-context")
+        );
+    }
+
+    #[test]
+    fn build_powershell_builder_injects_profile_prompt() {
+        let profile = TerminalProfile {
+            guid: None,
+            name: "Azure Ops".to_string(),
+            icon: None,
+            commandline: Some("pwsh".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            font: None,
+            font_face: None,
+            font_size: None,
+            font_weight: None,
+            cell_height: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
+            webpty: Some(WebptyProfileOptions {
+                prompt: Some("PS({profile}) {cwd}> ".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        };
+
+        let builder = build_powershell_builder(
+            "pwsh",
+            &[
+                "-NoLogo".to_string(),
+                "-Command".to_string(),
+                "kubectl".to_string(),
+                "config".to_string(),
+                "current-context".to_string(),
+            ],
+            Some(&profile),
+        );
+        let argv = builder
+            .get_argv()
+            .iter()
+            .filter_map(|value| value.to_str())
+            .collect::<Vec<_>>();
+        let script = argv.last().copied().expect("powershell script should exist");
+
+        assert_eq!(argv.first().copied(), Some("pwsh"));
+        assert!(argv.contains(&"-NoLogo"));
+        assert!(argv.contains(&"-NoExit"));
+        assert!(argv.contains(&"-Command"));
+        assert!(script.contains("function global:prompt"));
+        assert!(script.contains("PS("));
+        assert!(script.contains("AzureOps"));
+        assert!(script.contains("kubectl config current-context"));
     }
 
     #[cfg(not(windows))]

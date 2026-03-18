@@ -14,7 +14,7 @@
 바이너리이고 `webpty up` 한 번으로 UI와 PTY 런타임을 함께 올립니다.
 
 프로필, 테마, 색상표, 액션, 기본값은 공유 가능한 데스크톱 터미널용
-`settings.json` 형태를 사용합니다. 저장 시 알 수 없는 키는 그대로
+`settings.json`의 지원 subset을 사용합니다. 저장 시 알 수 없는 키는 그대로
 보존되고, 디스크에서 읽을 때는 JSONC 스타일 주석과 trailing comma도
 허용합니다.
 
@@ -32,6 +32,8 @@
 
 ![webpty collapsed rail](./docs/assets/webpty-collapsed-rail.png)
 
+![webpty mobile settings](./docs/assets/webpty-mobile-settings.png)
+
 ## 현재 상태
 
 구현됨:
@@ -46,7 +48,7 @@
 - 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 별도 설정 워크스페이스 탭
 - `themes[]`, `theme`, 프레임 색상, 셸 크롬을 바로 다루는 Theme Studio
 - `profiles.list[]`, 기본 프로필, 프롬프트, 폰트, 셸 필드를 바로 다루는 Profile Studio
-- 영어 / 한국어 / 시스템 추종 UI 문구를 다루는 `webpty.language` 기반 Language 섹션
+- 레지스트리 기반 UI 언어 선택을 다루는 `webpty.language` 기반 Language 섹션
 - Theme Studio / Profile Studio 초안 동기화에서 재귀 렌더 루프 콘솔 오류가 나지 않도록 한 안정화
 - profile/theme 항목 생성·복제·삭제용 인앱 UI
 - 탭, 프레임, 셸, 커서, 선택 영역 색상을 위한 인앱 color picker
@@ -237,5 +239,6 @@ Rust runtime
 
 - [Implementation audit](./docs/implementation-audit.md)
 - [Compatibility notes](./docs/compatibility.md)
+- [Localization notes](./docs/localization.md)
 - [Research spec](./docs/research-spec.md)
 - [Runtime contracts](./docs/runtime-contracts.md)

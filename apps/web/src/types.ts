@@ -17,7 +17,7 @@ export interface TerminalFontSettings {
   cellHeight?: number
 }
 
-export type UiLanguage = 'system' | 'en' | 'ko'
+export type UiLanguage = 'system' | (string & {})
 
 export interface WebptySettings {
   language?: UiLanguage

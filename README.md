@@ -18,9 +18,9 @@ The terminal stays black and dominant, the session rail stays thin and bright
 on the right edge, the settings workspace opens as its own rail tab, and the shipped
 binary runs the UI and PTY runtime together with `webpty up`.
 
-Profiles, themes, schemes, actions, and defaults use a shared desktop-terminal
-`settings.json` shape. Unknown keys are preserved on save, and disk loading now
-accepts JSONC-style comments and trailing commas.
+Profiles, themes, schemes, actions, and defaults use a supported shared
+desktop-terminal `settings.json` subset. Unknown keys are preserved on save,
+and disk loading now accepts JSONC-style comments and trailing commas.
 
 ## Preview
 
@@ -36,6 +36,8 @@ accepts JSONC-style comments and trailing commas.
 
 ![webpty collapsed rail](./docs/assets/webpty-collapsed-rail.png)
 
+![webpty mobile settings](./docs/assets/webpty-mobile-settings.png)
+
 ## Current Status
 
 Implemented:
@@ -50,7 +52,7 @@ Implemented:
 - tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
 - dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
 - dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
-- dedicated Language section backed by `webpty.language` for English / Korean / system-following UI copy
+- dedicated Language section backed by `webpty.language` for registry-backed UI copy selection
 - stable Theme Studio / Profile Studio draft syncing with no recursive render-loop console errors
 - in-app create / duplicate / delete flows for profile and theme entries
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
@@ -241,5 +243,6 @@ Rust runtime
 
 - [Implementation audit](./docs/implementation-audit.md)
 - [Compatibility notes](./docs/compatibility.md)
+- [Localization notes](./docs/localization.md)
 - [Research spec](./docs/research-spec.md)
 - [Runtime contracts](./docs/runtime-contracts.md)

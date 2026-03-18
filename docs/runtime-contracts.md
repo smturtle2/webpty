@@ -49,7 +49,7 @@ Serves the embedded production web UI bundled into the Rust binary.
 
 Returns the current shared `settings.json` subset loaded from the active
 settings path. The payload can also include `webpty.language` for UI-language
-selection.
+selection, where the value is `system` or a registered locale code.
 
 Default path selection:
 
@@ -154,6 +154,6 @@ Connection behavior:
 - the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
 - the settings workspace includes Theme, Profile, Language, JSON, and Shortcut sections
 - the frontend uses `hostPlatform` from `/api/health` to keep Profile Studio command and directory placeholders host-aware
-- the frontend can persist `webpty.language` as `system`, `en`, or `ko`
+- the frontend can persist `webpty.language` as `system` or a registered locale code, and unknown saved codes fall back to the default shipped locale in the UI
 - split panes keep subtle separators and active-pane framing inside the terminal workspace
 - advanced pane graphs, search, and command palette remain future milestones

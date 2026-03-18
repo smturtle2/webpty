@@ -66,6 +66,14 @@ Action fields currently mapped by the frontend:
 - object commands with `command.action`, such as `{ "command": { "action": "newTab" } }`
 - mapped actions currently include `newTab`, `closeTab`, `nextTab`, `prevTab`, and `openSettings`
 
+## Localization
+
+- `webpty.language` accepts `system` or a registered locale code
+- the frontend resolves saved locale codes through a locale registry with alias matching
+- unknown locale codes are preserved in settings and fall back to the default shipped locale in the UI
+- adding another locale is a frontend-only change centered on the locale registry in `apps/web/src/lib/localization.ts`
+- [Localization notes](./localization.md) documents the expected extension path
+
 ## Runtime Behavior
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
@@ -80,7 +88,7 @@ Action fields currently mapped by the frontend:
 - the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
-- the in-app Language section can persist `webpty.language` as `system`, `en`, or `ko`
+- the in-app Language section persists `webpty.language` as `system` or a registered locale code
 - Theme Studio and Profile Studio draft syncing avoids self-triggered render loops while switching entries or reloading runtime settings
 - `GET /api/health` now includes `hostPlatform` so the UI can keep Profile Studio command and directory hints aligned with the runtime OS
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors

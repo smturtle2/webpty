@@ -38,7 +38,7 @@ This pass checked the repo against the current product constraints:
 - aligned Profile Studio prompt previews with the runtime `{profile}` sanitization path
 - stabilized xterm fitting with repeated post-mount passes so narrow and mobile widths no longer keep the initial off-canvas geometry
 - surfaced runtime host metadata to the UI so Profile Studio placeholders reflect the actual execution OS
-- surfaced split-pane identity chrome with visible pane badges and stronger active-pane framing
+- kept split-pane identity chrome on separators and active-pane framing without restoring floating pane badges
 - refreshed the documentation screenshots from the running app after the latest UI pass
 - added a reproducible screenshot capture script (`npm run docs:shots`) so docs assets can be regenerated from the sample settings catalog
 - aligned the docs with the current Theme Studio / Profile Studio naming that ships in the interface

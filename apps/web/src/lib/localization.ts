@@ -1,6 +1,6 @@
 import type { UiLanguage } from '../types'
 
-export type DisplayLanguage = 'en' | 'ko'
+export type DisplayLanguage = string
 
 export interface SectionCopy {
   label: string
@@ -146,31 +146,82 @@ export interface AppCopy {
   shellPromptPlaceholder: string
 }
 
-function systemDisplayLanguage(): DisplayLanguage {
-  if (typeof navigator === 'undefined') {
-    return 'en'
+export interface UiLocaleDefinition {
+  id: string
+  aliases?: string[]
+  label: (copy: AppCopy) => string
+  nativeLabel: string
+  copy: AppCopy
+}
+
+const FALLBACK_DISPLAY_LANGUAGE = 'en'
+
+function normalizedLocaleToken(language: string): string {
+  return language.trim().toLowerCase()
+}
+
+function matchLocaleEntry(language: string): UiLocaleDefinition | null {
+  const normalized = normalizedLocaleToken(language)
+  if (normalized.length === 0) {
+    return null
   }
 
-  return navigator.language.toLowerCase().startsWith('ko') ? 'ko' : 'en'
+  for (const locale of UI_LOCALE_REGISTRY) {
+    const tokens = [locale.id, ...(locale.aliases ?? [])].map(normalizedLocaleToken)
+    if (tokens.includes(normalized)) {
+      return locale
+    }
+  }
+
+  for (const locale of UI_LOCALE_REGISTRY) {
+    const tokens = [locale.id, ...(locale.aliases ?? [])].map(normalizedLocaleToken)
+    if (tokens.some((token) => normalized.startsWith(`${token}-`))) {
+      return locale
+    }
+  }
+
+  return null
+}
+
+function fallbackLocale(): UiLocaleDefinition {
+  return UI_LOCALE_REGISTRY.find((locale) => locale.id === FALLBACK_DISPLAY_LANGUAGE) ?? UI_LOCALE_REGISTRY[0]
+}
+
+function systemDisplayLanguage(): DisplayLanguage {
+  if (typeof navigator === 'undefined') {
+    return FALLBACK_DISPLAY_LANGUAGE
+  }
+
+  return (matchLocaleEntry(navigator.language) ?? fallbackLocale()).id
 }
 
 export function resolveDisplayLanguage(language: UiLanguage | undefined): DisplayLanguage {
-  if (language === 'ko' || language === 'en') {
-    return language
+  if (language && language !== 'system') {
+    const locale = matchLocaleEntry(language)
+    if (locale) {
+      return locale.id
+    }
+
+    return FALLBACK_DISPLAY_LANGUAGE
   }
 
   return systemDisplayLanguage()
 }
 
 export function languageModeLabel(language: UiLanguage | undefined, copy: AppCopy) {
-  switch (language) {
-    case 'ko':
-      return copy.languageKorean
-    case 'en':
-      return copy.languageEnglish
-    default:
-      return copy.languageSystem
+  if (!language || language === 'system') {
+    return copy.languageSystem
   }
+
+  return (matchLocaleEntry(language) ?? fallbackLocale()).label(copy)
+}
+
+export function getRegisteredUiLocales(): readonly UiLocaleDefinition[] {
+  return UI_LOCALE_REGISTRY
+}
+
+export function isRegisteredUiLanguage(language: UiLanguage | undefined): boolean {
+  return typeof language === 'string' && matchLocaleEntry(language) !== null
 }
 
 const ENGLISH: AppCopy = {
@@ -483,6 +534,23 @@ const KOREAN: AppCopy = {
   shellPromptPlaceholder: '{user}@{host}:{cwd}{symbol} ',
 }
 
+// Add another locale by defining an AppCopy object and registering it here.
+const UI_LOCALE_REGISTRY: readonly UiLocaleDefinition[] = [
+  {
+    id: 'en',
+    label: (copy) => copy.languageEnglish,
+    nativeLabel: 'English',
+    copy: ENGLISH,
+  },
+  {
+    id: 'ko',
+    aliases: ['ko-kr'],
+    label: (copy) => copy.languageKorean,
+    nativeLabel: '한국어',
+    copy: KOREAN,
+  },
+]
+
 export function getAppCopy(language: DisplayLanguage): AppCopy {
-  return language === 'ko' ? KOREAN : ENGLISH
+  return (matchLocaleEntry(language) ?? fallbackLocale()).copy
 }

@@ -123,6 +123,17 @@ def capture(base_url: str, out_dir: Path) -> None:
         page.get_by_role("button", name="Hide session rail").click()
         page.wait_for_timeout(200)
         page.screenshot(path=str(out_dir / "webpty-collapsed-rail.png"), full_page=True)
+
+        mobile_page = browser.new_page(
+            viewport={"width": 480, "height": 900}, device_scale_factor=1
+        )
+        mobile_page.goto(base_url, wait_until="networkidle")
+        mobile_page.get_by_role("button", name="Open settings").click()
+        mobile_page.wait_for_timeout(200)
+        mobile_page.screenshot(
+            path=str(out_dir / "webpty-mobile-settings.png"), full_page=True
+        )
+        mobile_page.close()
         browser.close()
 
 

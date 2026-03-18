@@ -13,6 +13,8 @@ import { TerminalViewport } from './components/TerminalViewport'
 import { demoHealth, demoSessions, demoSettings } from './data/demo'
 import {
   getAppCopy,
+  getRegisteredUiLocales,
+  isRegisteredUiLanguage,
   languageModeLabel,
   resolveDisplayLanguage,
 } from './lib/localization'
@@ -253,6 +255,10 @@ function App() {
     editorHostPlatform,
   )
   const configuredLanguage = settings.webpty?.language ?? 'system'
+  const activeLanguageSelection =
+    configuredLanguage === 'system' || isRegisteredUiLanguage(configuredLanguage)
+      ? configuredLanguage
+      : uiLanguage
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -1799,14 +1805,14 @@ function App() {
                 </div>
 
                 <div className="language-grid" role="list" aria-label={copy.languageMode}>
-                  {(
-                    [
-                      ['system', copy.languageSystem],
-                      ['en', copy.languageEnglish],
-                      ['ko', copy.languageKorean],
-                    ] satisfies Array<[UiLanguage, string]>
-                  ).map(([language, label]) => {
-                    const isActive = configuredLanguage === language
+                  {[
+                    { id: 'system' as UiLanguage, label: copy.languageSystem },
+                    ...getRegisteredUiLocales().map((locale) => ({
+                      id: locale.id as UiLanguage,
+                      label: locale.label(copy),
+                    })),
+                  ].map(({ id: language, label }) => {
+                    const isActive = activeLanguageSelection === language
 
                     return (
                       <button
@@ -2483,7 +2489,12 @@ function normalizeWebptySettings(payload: unknown): TerminalSettings['webpty'] {
 }
 
 function normalizeUiLanguage(value: unknown): UiLanguage | undefined {
-  return value === 'system' || value === 'en' || value === 'ko' ? value : undefined
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : undefined
 }
 
 function normalizeProfile(payload: unknown): TerminalProfile | null {
