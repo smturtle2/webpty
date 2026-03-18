@@ -64,8 +64,8 @@ const EMPTY_THEMES: TerminalTheme[] = []
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
 const SETTINGS_WORKSPACE_ID = 'workspace-settings'
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
-  { id: 'appearance', label: 'Appearance', meta: 'Surface, tabs, and shell chrome' },
-  { id: 'profiles', label: 'Profiles', meta: 'Shell launch, prompt, and font behavior' },
+  { id: 'appearance', label: 'Theme Studio', meta: 'Surface, tabs, and shell chrome' },
+  { id: 'profiles', label: 'Profile Studio', meta: 'Shell launch, prompt, and font behavior' },
   { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
   { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
 ]
@@ -929,7 +929,7 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Appearance</strong>
+                  <strong>Theme Studio</strong>
                   <p>
                     Keep the shell black, the tab surfaces white, and the chrome flat while
                     editing the shared theme payload directly.
@@ -1212,7 +1212,7 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Profiles</strong>
+                  <strong>Profile Studio</strong>
                   <p>
                     Edit launch command, prompt-facing metadata, and terminal font behavior
                     without leaving the shell.

@@ -1,21 +1,32 @@
 # webpty Implementation Audit
 
-## Completed In This Pass
+## Audit Focus
 
-- tightened the right rail so the shell stays dominant and the tab surfaces stay thin
-- refined the settings workspace to a flatter Windows 11-style chrome profile
-- added direct color-pickers for appearance and profile editing
-- added a live profile preview for prompt, tab accent, and shell colors
-- reset the shipped sample settings to a fully opaque black shell by default
-- regenerated the documentation screenshots from the running app
+This pass checked the repo against the current product constraints:
+
+- Rust backend with one-command startup through `webpty up`
+- external exposure through `webpty up --funnel`
+- black terminal-first layout with a thin right rail and no persistent top toolbar
+- shared `settings.json` compatibility for profiles and themes
+- dedicated settings tab with profile/theme editing UX
+- per-profile prompt shaping instead of a generic `bash-5.2$`
+
+## Findings Addressed In This Pass
+
+- fixed frontend lint debt in `apps/web/src/App.tsx`
+- extended the shared theme model and UI to cover `window.frame` and `window.unfocusedFrame`
+- added token shortcut chips for theme color fields so shared color tokens are easier to enter without dropping down to raw JSON
+- refreshed the shipped sample settings and demo data so frame colors are visible immediately in the UI
+- regenerated the documentation screenshots from the running app after the UI refresh
 
 ## Confirmed Working
 
 - Rust PTY backend, embedded UI serving, and `webpty up`
 - external exposure through `webpty up --funnel`
 - shared `settings.json` loading, persistence, JSONC parsing, and unknown-key round-trip
+- right-rail settings workspace with separate Theme Studio, Profile Studio, JSON, and shortcut surfaces
+- color-picker driven theme/profile editing plus direct JSON editing
 - per-profile prompt shaping on non-Windows hosts
-- right-rail settings workspace, profile editing, and appearance editing
 
 ## Remaining Gaps
 

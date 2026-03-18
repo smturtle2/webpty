@@ -41,10 +41,11 @@ Implemented:
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
 - tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
-- dedicated Appearance Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
-- dedicated Profiles Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
+- dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
+- dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
 - in-app create / duplicate / delete flows for profile and theme entries
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
+- token shortcut chips for shared theme color values such as `accent` and `terminalBackground`
 - live profile preview surface for prompt, tab accent, and shell color verification
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
