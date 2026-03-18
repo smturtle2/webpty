@@ -23,7 +23,7 @@ export type SchemeSelection =
       light?: string
     }
 
-export interface WindowsTerminalTheme {
+export interface TerminalTheme {
   name: string
   window?: {
     applicationTheme?: 'system' | 'dark' | 'light'
@@ -40,13 +40,13 @@ export interface WindowsTerminalTheme {
   }
 }
 
-export interface WindowsTerminalAction {
+export interface TerminalAction {
   command?: string
   keys?: string[]
   name?: string
 }
 
-export interface WindowsTerminalColorScheme {
+export interface TerminalColorScheme {
   name: string
   background: string
   foreground: string
@@ -70,7 +70,7 @@ export interface WindowsTerminalColorScheme {
   brightWhite?: string
 }
 
-export interface WindowsTerminalProfile {
+export interface TerminalProfile {
   id?: string
   guid?: string
   name: string
@@ -90,21 +90,21 @@ export interface WindowsTerminalProfile {
   useAcrylic?: boolean
 }
 
-export interface WindowsTerminalSettings {
+export interface TerminalSettings {
   $schema?: string
   defaultProfile: string
   copyFormatting?: 'none' | 'html' | 'all'
   theme?: ThemeSelection
-  themes?: WindowsTerminalTheme[]
-  actions?: WindowsTerminalAction[]
+  themes?: TerminalTheme[]
+  actions?: TerminalAction[]
   profiles: {
-    defaults?: Partial<WindowsTerminalProfile>
-    list: WindowsTerminalProfile[]
+    defaults?: Partial<TerminalProfile>
+    list: TerminalProfile[]
   }
-  schemes?: WindowsTerminalColorScheme[]
+  schemes?: TerminalColorScheme[]
 }
 
-export interface ResolvedProfile extends WindowsTerminalProfile {
+export interface ResolvedProfile extends TerminalProfile {
   id: string
 }
 

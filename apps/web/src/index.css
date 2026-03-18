@@ -2,7 +2,8 @@
   font-family: 'Cascadia Mono';
   src:
     local('Cascadia Mono'),
-    local('CascadiaMono');
+    local('CascadiaMono'),
+    url('/fonts/CascadiaMono.ttf') format('truetype');
   font-display: swap;
 }
 

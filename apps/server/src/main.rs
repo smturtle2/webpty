@@ -43,7 +43,7 @@ static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 #[derive(Clone)]
 struct AppState {
     sessions: Arc<RwLock<HashMap<String, Arc<SessionState>>>>,
-    settings: Arc<RwLock<WindowsTerminalSettings>>,
+    settings: Arc<RwLock<TerminalSettings>>,
     settings_path: Arc<PathBuf>,
 }
 
@@ -337,7 +337,7 @@ enum ServerMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WindowsTerminalSettings {
+struct TerminalSettings {
     #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
     schema: Option<String>,
     default_profile: String,
@@ -346,12 +346,12 @@ struct WindowsTerminalSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     theme: Option<ThemeSelection>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    themes: Vec<WtTheme>,
+    themes: Vec<TerminalTheme>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    actions: Vec<WtAction>,
-    profiles: WtProfiles,
+    actions: Vec<TerminalAction>,
+    profiles: TerminalProfiles,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    schemes: Vec<WtColorScheme>,
+    schemes: Vec<TerminalColorScheme>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -372,21 +372,21 @@ enum ThemeSelection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtTheme {
+struct TerminalTheme {
     name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    window: Option<WtWindowTheme>,
+    window: Option<TerminalWindowTheme>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    tab: Option<WtTabTheme>,
+    tab: Option<TerminalTabTheme>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    tab_row: Option<WtTabRowTheme>,
+    tab_row: Option<TerminalTabRowTheme>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtWindowTheme {
+struct TerminalWindowTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     application_theme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -397,7 +397,7 @@ struct WtWindowTheme {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtTabTheme {
+struct TerminalTabTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     background: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -410,7 +410,7 @@ struct WtTabTheme {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtTabRowTheme {
+struct TerminalTabRowTheme {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     background: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -421,7 +421,7 @@ struct WtTabRowTheme {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtAction {
+struct TerminalAction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     command: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -434,17 +434,17 @@ struct WtAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtProfiles {
+struct TerminalProfiles {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    defaults: Option<WtProfileDefaults>,
-    list: Vec<WtProfile>,
+    defaults: Option<TerminalProfileDefaults>,
+    list: Vec<TerminalProfile>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct WtProfileDefaults {
+struct TerminalProfileDefaults {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     font_face: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -461,7 +461,7 @@ struct WtProfileDefaults {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtProfile {
+struct TerminalProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     guid: Option<String>,
     name: String,
@@ -499,7 +499,7 @@ enum SchemeSelection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WtColorScheme {
+struct TerminalColorScheme {
     name: String,
     background: String,
     foreground: String,
@@ -644,7 +644,7 @@ fn root_usage() -> String {
 
 fn up_usage() -> String {
     format!(
-        "webpty up\n\nUsage:\n  webpty up [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n\nOptions:\n  --host <host>         Bind address for the local server (default: {})\n  --port <port>         TCP port for the local server (default: {})\n  --settings <path>     WT-compatible settings file path\n  --funnel              Expose the local server through Tailscale Funnel\n  -h, --help            Print help\n  -V, --version         Print version",
+        "webpty up\n\nUsage:\n  webpty up [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n\nOptions:\n  --host <host>         Bind address for the local server (default: {})\n  --port <port>         TCP port for the local server (default: {})\n  --settings <path>     Shared settings file path\n  --funnel              Expose the local server through Tailscale Funnel\n  -h, --help            Print help\n  -V, --version         Print version",
         DEFAULT_HOST, DEFAULT_PORT
     )
 }
@@ -663,16 +663,12 @@ async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let settings_path = options.settings_path.clone();
-    let settings = load_settings(&settings_path).unwrap_or_else(|error| {
-        eprintln!(
-            "failed to load settings from {}: {error}. Falling back to defaults.",
+    let settings = load_settings(&settings_path).map_err(|error| {
+        format!(
+            "failed to load settings from {}: {error}",
             settings_path.display()
-        );
-        let defaults =
-            normalize_settings(default_settings()).expect("default settings should be valid");
-        let _ = persist_settings(&settings_path, &defaults);
-        defaults
-    });
+        )
+    })?;
     let sessions = seed_sessions(&settings).unwrap_or_else(|error| {
         eprintln!("failed to seed PTY sessions: {error}");
         HashMap::new()
@@ -1015,7 +1011,7 @@ fn find_embedded_asset(path: &str) -> Option<Response> {
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
-        message: "WT-compatible PTY server and embedded shell ready".to_string(),
+        message: "Schema-compatible PTY server and embedded shell ready".to_string(),
         websocket_path: "/ws/:sessionId".to_string(),
         mode: "standalone-shell".to_string(),
         features: vec![
@@ -1032,14 +1028,14 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
-async fn get_settings(State(state): State<AppState>) -> Json<WindowsTerminalSettings> {
+async fn get_settings(State(state): State<AppState>) -> Json<TerminalSettings> {
     Json(state.settings.read().await.clone())
 }
 
 async fn update_settings(
     State(state): State<AppState>,
-    Json(payload): Json<WindowsTerminalSettings>,
-) -> Result<Json<WindowsTerminalSettings>, (StatusCode, String)> {
+    Json(payload): Json<TerminalSettings>,
+) -> Result<Json<TerminalSettings>, (StatusCode, String)> {
     let normalized = normalize_settings(payload).map_err(|message| {
         (
             StatusCode::BAD_REQUEST,
@@ -1321,7 +1317,7 @@ fn user_settings_path() -> Option<PathBuf> {
     }
 }
 
-fn load_settings(path: &Path) -> Result<WindowsTerminalSettings, Box<dyn std::error::Error>> {
+fn load_settings(path: &Path) -> Result<TerminalSettings, Box<dyn std::error::Error>> {
     if !path.exists() {
         let defaults = normalize_settings(default_settings())?;
         persist_settings(path, &defaults)?;
@@ -1329,13 +1325,13 @@ fn load_settings(path: &Path) -> Result<WindowsTerminalSettings, Box<dyn std::er
     }
 
     let contents = fs::read_to_string(path)?;
-    let parsed = serde_json::from_str::<WindowsTerminalSettings>(&contents)?;
+    let parsed = json5::from_str::<TerminalSettings>(&contents)?;
     Ok(normalize_settings(parsed)?)
 }
 
 fn persist_settings(
     path: &Path,
-    settings: &WindowsTerminalSettings,
+    settings: &TerminalSettings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1346,8 +1342,8 @@ fn persist_settings(
 }
 
 fn normalize_settings(
-    mut settings: WindowsTerminalSettings,
-) -> Result<WindowsTerminalSettings, Box<dyn std::error::Error>> {
+    mut settings: TerminalSettings,
+) -> Result<TerminalSettings, Box<dyn std::error::Error>> {
     if settings.profiles.list.is_empty() {
         return Err("profiles.list must contain at least one profile".into());
     }
@@ -1374,7 +1370,7 @@ fn normalize_settings(
 }
 
 fn seed_sessions(
-    settings: &WindowsTerminalSettings,
+    settings: &TerminalSettings,
 ) -> Result<HashMap<String, Arc<SessionState>>, String> {
     let default_profile_id =
         resolve_requested_profile_id(settings, Some(&settings.default_profile))
@@ -1396,7 +1392,7 @@ fn seed_sessions(
 }
 
 fn spawn_session(
-    settings: &WindowsTerminalSettings,
+    settings: &TerminalSettings,
     id: String,
     title: String,
     profile_id: String,
@@ -1445,7 +1441,7 @@ fn spawn_session(
     Ok(state)
 }
 
-fn build_launch_plan(profile: &WtProfile, cwd_override: Option<String>) -> LaunchPlan {
+fn build_launch_plan(profile: &TerminalProfile, cwd_override: Option<String>) -> LaunchPlan {
     let mut notes = Vec::new();
     let requested_dir = cwd_override.or_else(|| profile.starting_directory.clone());
     let cwd = resolve_launch_cwd(requested_dir.as_deref(), &mut notes);
@@ -1721,7 +1717,7 @@ fn split_windows_commandline(commandline: &str) -> Option<Vec<String>> {
     }
 }
 
-fn default_shell_builder(profile: Option<&WtProfile>) -> CommandBuilder {
+fn default_shell_builder(profile: Option<&TerminalProfile>) -> CommandBuilder {
     #[cfg(windows)]
     {
         let shell = env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
@@ -1781,13 +1777,13 @@ fn default_shell_label() -> String {
 }
 
 #[cfg(not(windows))]
-fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&WtProfile>) {
+fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&TerminalProfile>) {
     builder.env("PS1", profile_prompt(profile));
     builder.env("PROMPT_COMMAND", "");
 }
 
 #[cfg(not(windows))]
-fn profile_prompt(profile: Option<&WtProfile>) -> String {
+fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
     let Some(profile) = profile else {
         return "\\w\\$ ".to_string();
     };
@@ -1980,7 +1976,7 @@ fn spawn_waiter(session: Arc<SessionState>, mut child: Box<dyn Child + Send + Sy
 }
 
 fn resolve_requested_profile_id(
-    settings: &WindowsTerminalSettings,
+    settings: &TerminalSettings,
     requested: Option<&str>,
 ) -> Option<String> {
     let requested = requested.unwrap_or(&settings.default_profile);
@@ -1994,9 +1990,9 @@ fn resolve_requested_profile_id(
 }
 
 fn resolve_profile<'a>(
-    settings: &'a WindowsTerminalSettings,
+    settings: &'a TerminalSettings,
     profile_id: &str,
-) -> Option<&'a WtProfile> {
+) -> Option<&'a TerminalProfile> {
     settings
         .profiles
         .list
@@ -2004,18 +2000,18 @@ fn resolve_profile<'a>(
         .find(|profile| profile_matches(profile, profile_id))
 }
 
-fn profile_matches(profile: &WtProfile, requested: &str) -> bool {
+fn profile_matches(profile: &TerminalProfile, requested: &str) -> bool {
     profile_key(profile) == requested || profile.name == requested
 }
 
-fn profile_key(profile: &WtProfile) -> String {
+fn profile_key(profile: &TerminalProfile) -> String {
     profile
         .guid
         .clone()
         .unwrap_or_else(|| slugify(&profile.name))
 }
 
-fn default_session_title(profile: &WtProfile) -> String {
+fn default_session_title(profile: &TerminalProfile) -> String {
     profile
         .tab_title
         .as_deref()
@@ -2057,67 +2053,67 @@ fn slugify(value: &str) -> String {
         .join("-")
 }
 
-fn default_settings() -> WindowsTerminalSettings {
-    WindowsTerminalSettings {
+fn default_settings() -> TerminalSettings {
+    TerminalSettings {
         schema: Some("https://aka.ms/terminal-profiles-schema".to_string()),
         default_profile: "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}".to_string(),
         copy_formatting: Some("all".to_string()),
         theme: Some(ThemeSelection::Named("Classic".to_string())),
         themes: vec![
-            WtTheme {
+            TerminalTheme {
                 name: "Classic".to_string(),
-                window: Some(WtWindowTheme {
+                window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: Some(false),
                     extra: JsonMap::new(),
                 }),
-                tab: Some(WtTabTheme {
+                tab: Some(TerminalTabTheme {
                     background: Some("#ffffff".to_string()),
                     unfocused_background: Some("#f5f5f5".to_string()),
                     show_close_button: Some("hover".to_string()),
                     extra: JsonMap::new(),
                 }),
-                tab_row: Some(WtTabRowTheme {
+                tab_row: Some(TerminalTabRowTheme {
                     background: Some("#f3f3f3".to_string()),
                     unfocused_background: Some("#ededed".to_string()),
                     extra: JsonMap::new(),
                 }),
                 extra: JsonMap::new(),
             },
-            WtTheme {
+            TerminalTheme {
                 name: "Mist".to_string(),
-                window: Some(WtWindowTheme {
+                window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: Some(false),
                     extra: JsonMap::new(),
                 }),
-                tab: Some(WtTabTheme {
+                tab: Some(TerminalTabTheme {
                     background: Some("#ffffff".to_string()),
                     unfocused_background: Some("#f2f2f2".to_string()),
                     show_close_button: Some("hover".to_string()),
                     extra: JsonMap::new(),
                 }),
-                tab_row: Some(WtTabRowTheme {
+                tab_row: Some(TerminalTabRowTheme {
                     background: Some("#efefef".to_string()),
                     unfocused_background: Some("#e7e7e7".to_string()),
                     extra: JsonMap::new(),
                 }),
                 extra: JsonMap::new(),
             },
-            WtTheme {
+            TerminalTheme {
                 name: "Slate".to_string(),
-                window: Some(WtWindowTheme {
+                window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: None,
                     extra: JsonMap::new(),
                 }),
-                tab: Some(WtTabTheme {
+                tab: Some(TerminalTabTheme {
                     background: Some("#ffffff".to_string()),
                     unfocused_background: Some("#ececec".to_string()),
                     show_close_button: Some("always".to_string()),
                     extra: JsonMap::new(),
                 }),
-                tab_row: Some(WtTabRowTheme {
+                tab_row: Some(TerminalTabRowTheme {
                     background: Some("#e5e5e5".to_string()),
                     unfocused_background: Some("#dcdcdc".to_string()),
                     extra: JsonMap::new(),
@@ -2126,39 +2122,39 @@ fn default_settings() -> WindowsTerminalSettings {
             },
         ],
         actions: vec![
-            WtAction {
+            TerminalAction {
                 command: Some("newTab".to_string()),
                 keys: vec!["ctrl+t".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
-            WtAction {
+            TerminalAction {
                 command: Some("closeTab".to_string()),
                 keys: vec!["ctrl+w".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
-            WtAction {
+            TerminalAction {
                 command: Some("nextTab".to_string()),
                 keys: vec!["ctrl+tab".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
-            WtAction {
+            TerminalAction {
                 command: Some("prevTab".to_string()),
                 keys: vec!["ctrl+shift+tab".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
-            WtAction {
+            TerminalAction {
                 command: Some("openSettings".to_string()),
                 keys: vec!["ctrl+,".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
         ],
-        profiles: WtProfiles {
-            defaults: Some(WtProfileDefaults {
+        profiles: TerminalProfiles {
+            defaults: Some(TerminalProfileDefaults {
                 font_face: Some("Cascadia Mono".to_string()),
                 font_size: Some(13.0),
                 line_height: Some(1.22),
@@ -2167,7 +2163,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 extra: JsonMap::new(),
             }),
             list: vec![
-                WtProfile {
+                TerminalProfile {
                     guid: Some("{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}".to_string()),
                     name: "PowerShell".to_string(),
                     icon: Some("PS".to_string()),
@@ -2180,7 +2176,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
                     extra: JsonMap::new(),
                 },
-                WtProfile {
+                TerminalProfile {
                     guid: Some("{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}".to_string()),
                     name: "Ubuntu".to_string(),
                     icon: Some("UB".to_string()),
@@ -2193,7 +2189,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
                     extra: JsonMap::new(),
                 },
-                WtProfile {
+                TerminalProfile {
                     guid: Some("{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}".to_string()),
                     name: "Azure Ops".to_string(),
                     icon: Some("AZ".to_string()),
@@ -2213,7 +2209,7 @@ fn default_settings() -> WindowsTerminalSettings {
             extra: JsonMap::new(),
         },
         schemes: vec![
-            WtColorScheme {
+            TerminalColorScheme {
                 name: "Campbell".to_string(),
                 background: "#0c0c0c".to_string(),
                 foreground: "#f2f2f2".to_string(),
@@ -2237,7 +2233,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 bright_white: Some("#f2f2f2".to_string()),
                 extra: JsonMap::new(),
             },
-            WtColorScheme {
+            TerminalColorScheme {
                 name: "One Half Dark".to_string(),
                 background: "#282c34".to_string(),
                 foreground: "#dcdfe4".to_string(),
@@ -2261,7 +2257,7 @@ fn default_settings() -> WindowsTerminalSettings {
                 bright_white: Some("#f4f7fb".to_string()),
                 extra: JsonMap::new(),
             },
-            WtColorScheme {
+            TerminalColorScheme {
                 name: "Nord".to_string(),
                 background: "#2e3440".to_string(),
                 foreground: "#eceff4".to_string(),
@@ -2302,7 +2298,7 @@ mod tests {
 
     #[test]
     fn uses_tab_title_for_default_session_title() {
-        let profile = WtProfile {
+        let profile = TerminalProfile {
             guid: None,
             name: "PowerShell".to_string(),
             icon: None,
@@ -2322,7 +2318,7 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn profile_prompt_matches_profile_family() {
-        let powershell = WtProfile {
+        let powershell = TerminalProfile {
             guid: None,
             name: "PowerShell".to_string(),
             icon: None,
@@ -2335,7 +2331,7 @@ mod tests {
             color_scheme: None,
             extra: JsonMap::new(),
         };
-        let ubuntu = WtProfile {
+        let ubuntu = TerminalProfile {
             guid: None,
             name: "Ubuntu".to_string(),
             icon: None,
@@ -2348,7 +2344,7 @@ mod tests {
             color_scheme: None,
             extra: JsonMap::new(),
         };
-        let custom = WtProfile {
+        let custom = TerminalProfile {
             guid: None,
             name: "Azure Ops".to_string(),
             icon: None,
@@ -2416,5 +2412,48 @@ mod tests {
             Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
             None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
         }
+    }
+
+    #[test]
+    fn load_settings_accepts_comments_and_trailing_commas() {
+        let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
+        let fixture = r#"
+        {
+          // shared profile settings
+          "$schema": "https://aka.ms/terminal-profiles-schema",
+          "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+          "profiles": {
+            "list": [
+              {
+                "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+                "name": "PowerShell",
+                "commandline": "pwsh.exe",
+              },
+            ],
+          },
+        }
+        "#;
+
+        fs::write(&path, fixture).expect("fixture should be written");
+        let settings = load_settings(&path).expect("json5 settings should load");
+        assert_eq!(
+            settings.default_profile,
+            "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}"
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_settings_does_not_mutate_invalid_existing_file() {
+        let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
+        let fixture = "{ invalid json";
+
+        fs::write(&path, fixture).expect("fixture should be written");
+        assert!(load_settings(&path).is_err(), "invalid settings should fail");
+        assert_eq!(
+            fs::read_to_string(&path).expect("fixture should remain readable"),
+            fixture
+        );
+        let _ = fs::remove_file(path);
     }
 }

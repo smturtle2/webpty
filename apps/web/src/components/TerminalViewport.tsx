@@ -2,7 +2,7 @@ import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useEffectEvent, useRef } from 'react'
-import type { TerminalCursorShape, WindowsTerminalColorScheme } from '../types'
+import type { TerminalColorScheme, TerminalCursorShape } from '../types'
 
 interface TerminalViewportProps {
   active: boolean
@@ -13,11 +13,12 @@ interface TerminalViewportProps {
   fontSize: number
   lineHeight: number
   cursorShape: TerminalCursorShape | undefined
-  scheme: WindowsTerminalColorScheme
+  scheme: TerminalColorScheme
   onConnectionStateChange: (
     sessionId: string,
     state: 'connecting' | 'live' | 'offline',
   ) => void
+  onShortcut: (event: KeyboardEvent) => boolean
   onTranscriptChange: (sessionId: string, transcript: string) => void
 }
 
@@ -32,6 +33,7 @@ export function TerminalViewport({
   cursorShape,
   scheme,
   onConnectionStateChange,
+  onShortcut,
   onTranscriptChange,
 }: TerminalViewportProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -49,6 +51,8 @@ export function TerminalViewport({
   const reportTranscript = useEffectEvent((nextSessionId: string, transcript: string) => {
     onTranscriptChange(nextSessionId, transcript)
   })
+
+  const dispatchShortcut = useEffectEvent((event: KeyboardEvent) => onShortcut(event))
 
   useEffect(() => {
     fallbackTranscriptRef.current = `${fallbackLines.join('\r\n')}\r\n`
@@ -119,6 +123,19 @@ export function TerminalViewport({
       lineHeight: 1.22,
       letterSpacing: 0.1,
       scrollback: 2000,
+    })
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') {
+        return true
+      }
+
+      if (dispatchShortcut(event)) {
+        event.preventDefault()
+        event.stopPropagation()
+        return false
+      }
+
+      return true
     })
     const fitAddon = new FitAddon()
     const inputDisposable = term.onData((data) => {
@@ -305,7 +322,7 @@ function parseMessage(
   }
 }
 
-function toXtermTheme(scheme: WindowsTerminalColorScheme) {
+function toXtermTheme(scheme: TerminalColorScheme) {
   return {
     background: scheme.background,
     foreground: scheme.foreground,

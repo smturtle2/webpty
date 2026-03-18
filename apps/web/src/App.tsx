@@ -22,14 +22,14 @@ import {
   resolveUiTheme,
   resolveWindowAppearance,
   sessionLabel,
-} from './lib/windowsTerminal'
+} from './lib/terminalProfiles'
 import type {
   ServerHealth,
   SessionItem,
+  TerminalAction,
+  TerminalProfile,
+  TerminalSettings,
   UiThemeTokens,
-  WindowsTerminalAction,
-  WindowsTerminalProfile,
-  WindowsTerminalSettings,
 } from './types'
 
 type ConnectionState = 'connecting' | 'live' | 'offline'
@@ -52,8 +52,10 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
   openSettings: ['ctrl+,'],
 }
 
+const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
+
 function App() {
-  const [settings, setSettings] = useState<WindowsTerminalSettings>(demoSettings)
+  const [settings, setSettings] = useState<TerminalSettings>(demoSettings)
   const [settingsDocument, setSettingsDocument] = useState<Record<string, unknown>>(() =>
     cloneSettingsDocument(demoSettings),
   )
@@ -66,6 +68,13 @@ function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline')
   const [systemAppearance, setSystemAppearance] = useState<'dark' | 'light'>(resolveAppearance())
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isRailCollapsed, setIsRailCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(RAIL_COLLAPSED_STORAGE_KEY) === 'true'
+    } catch {
+      return false
+    }
+  })
   const [settingsDraft, setSettingsDraft] = useState(formatSettingsJson(demoSettings))
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
@@ -95,6 +104,7 @@ function App() {
     .filter((profile) => profile.hidden !== true)
     .map((profile) => resolveProfile(settings, profileIdentifier(profile)))
   const actionBindings = resolveActionBindings(settings.actions)
+  const canSplitActiveTab = currentTab.paneIds.length === 1
   const shortcutSummary = [
     { command: 'new tab', keys: actionLabel(actionBindings.newTab) },
     { command: 'close tab', keys: actionLabel(actionBindings.closeTab) },
@@ -131,6 +141,14 @@ function App() {
       mediaQuery.removeEventListener('change', handleChange)
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RAIL_COLLAPSED_STORAGE_KEY, String(isRailCollapsed))
+    } catch {
+      // ignore local storage failures and keep the in-memory state
+    }
+  }, [isRailCollapsed])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -403,45 +421,57 @@ function App() {
     }
   }
 
-  const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
+  const runShortcut = useEffectEvent((event: KeyboardEvent) => {
     if (event.key === 'Escape' && isSettingsOpen) {
       event.preventDefault()
       setIsSettingsOpen(false)
-      return
+      return true
     }
 
     if (isTypingTarget(event.target)) {
-      return
+      return false
     }
 
     if (matchesAction(event, actionBindings.prevTab)) {
       event.preventDefault()
       cycleSession(-1)
-      return
+      return true
     }
 
     if (matchesAction(event, actionBindings.nextTab)) {
       event.preventDefault()
       cycleSession(1)
-      return
+      return true
     }
 
     if (matchesAction(event, actionBindings.newTab)) {
       event.preventDefault()
       void createSession()
-      return
+      return true
     }
 
     if (matchesAction(event, actionBindings.closeTab)) {
       event.preventDefault()
       void closeTab(activeTabId)
-      return
+      return true
     }
 
     if (matchesAction(event, actionBindings.openSettings)) {
       event.preventDefault()
+      setIsRailCollapsed(false)
       setIsSettingsOpen((current) => !current)
+      return true
     }
+
+    return false
+  })
+
+  function handleShortcut(event: KeyboardEvent) {
+    return runShortcut(event)
+  }
+
+  const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    handleShortcut(event)
   })
 
   useEffect(() => {
@@ -486,7 +516,7 @@ function App() {
       setSaveState('saved')
     } catch {
       setSaveState('error')
-      setSettingsError('Settings 저장에 실패했습니다. JSON 형식과 서버 상태를 확인하세요.')
+      setSettingsError('Settings save failed. Check the JSON draft and runtime status.')
     }
   }
 
@@ -509,7 +539,7 @@ function App() {
       await commitSettings(parseSettingsDraft(settingsDraft), canConnect)
     } catch {
       setSaveState('error')
-      setSettingsError('settings.json 초안이 유효한 WT 호환 JSON이 아닙니다.')
+      setSettingsError('The settings draft is not valid profile JSON.')
     }
   }
 
@@ -519,9 +549,21 @@ function App() {
     setSettingsDraft(formatSettingsJson(settingsDocument))
   }
 
+  function toggleRail() {
+    setIsRailCollapsed((current) => !current)
+  }
+
+  function toggleSettings() {
+    setIsRailCollapsed(false)
+    setIsSettingsOpen((current) => !current)
+  }
+
   return (
     <main className="terminal-app" style={themeVars(uiTheme)}>
-      <section className="terminal-shell">
+      <section
+        className={`terminal-shell ${isRailCollapsed ? 'is-rail-collapsed' : ''}`}
+        data-rail-collapsed={isRailCollapsed}
+      >
         <section className="viewport-stage" aria-label="Terminal workspace">
           <div className="terminal-stage">
             <div className={`workspace-grid workspace-grid-${currentTab.layout}`}>
@@ -553,6 +595,7 @@ function App() {
                       fontSize={profile.fontSize ?? 13}
                       lineHeight={profile.lineHeight ?? 1.22}
                       onConnectionStateChange={handleConnectionStateChange}
+                      onShortcut={handleShortcut}
                       onTranscriptChange={handleTranscriptChange}
                       scheme={scheme}
                       sessionId={session.id}
@@ -576,7 +619,7 @@ function App() {
             >
               <div className="drawer-header">
                 <div>
-                  <span className="header-label">Terminal settings</span>
+                  <span className="header-label">Settings</span>
                   <strong>Profiles, themes, JSON</strong>
                   <p>{runtimeMessage}</p>
                 </div>
@@ -597,7 +640,7 @@ function App() {
                 </div>
               </div>
 
-              <section className="drawer-overview" aria-label="Studio overview">
+              <section className="drawer-overview" aria-label="Shell overview">
                 <article className="summary-card">
                   <span className="header-label">Default</span>
                   <strong>{defaultProfile.name}</strong>
@@ -622,7 +665,7 @@ function App() {
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Appearance</strong>
-                  <p>Keep the terminal dark, the rail bright, and the chrome flat like a native shell.</p>
+                  <p>Keep the shell dark, the rail bright, and the chrome flat.</p>
                 </div>
 
                 <div className="theme-grid">
@@ -657,7 +700,7 @@ function App() {
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Profiles</strong>
-                  <p>Launch immediately or promote a profile to the WT-compatible default.</p>
+                  <p>Launch immediately or promote a profile to the default slot.</p>
                 </div>
 
                 <div className="profile-grid">
@@ -708,7 +751,7 @@ function App() {
               <section className="drawer-section studio-editor">
                 <div className="section-heading">
                   <strong>settings.json</strong>
-                  <p>Round-trip preserves unknown keys while the UI edits the supported Windows Terminal subset.</p>
+                  <p>Round-trip preserves unknown keys while the UI edits the supported profile subset.</p>
                 </div>
 
                 <textarea
@@ -757,10 +800,21 @@ function App() {
         </section>
 
         <aside
-          className="session-rail"
+          className={`session-rail ${isRailCollapsed ? 'is-collapsed' : ''}`}
           data-close-mode={closeButtonMode}
           aria-label="Session rail"
         >
+          <button
+            type="button"
+            className="rail-toggle"
+            aria-label={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+            onClick={toggleRail}
+            title={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+          >
+            <span>{isRailCollapsed ? '<' : '>'}</span>
+            <small>{isRailCollapsed ? 'show' : 'hide'}</small>
+          </button>
+
           <div className="rail-list" role="tablist" aria-label="Sessions">
             {tabs.map((tab) => {
               const primarySession =
@@ -785,6 +839,7 @@ function App() {
                     role="tab"
                     aria-selected={isActive}
                     aria-label={`${tabLabel} tab`}
+                    title={`${tabLabel} · ${profile.name}`}
                     onClick={() => {
                       setActiveTabId(tab.id)
                       activateSession(tab.paneIds[0])
@@ -820,7 +875,8 @@ function App() {
             <button
               type="button"
               className="rail-action is-primary"
-              aria-label="New session"
+              aria-label="New tab"
+              title="New tab"
               onClick={() => void createSession()}
             >
               <span>+</span>
@@ -828,12 +884,35 @@ function App() {
             </button>
             <button
               type="button"
+              className="rail-action"
+              aria-label="Split vertical"
+              title="Split vertical"
+              disabled={!canSplitActiveTab}
+              onClick={() => void createSession(activeProfile.id, 'vertical')}
+            >
+              <span>vs</span>
+              <small>split</small>
+            </button>
+            <button
+              type="button"
+              className="rail-action"
+              aria-label="Split horizontal"
+              title="Split horizontal"
+              disabled={!canSplitActiveTab}
+              onClick={() => void createSession(activeProfile.id, 'horizontal')}
+            >
+              <span>hs</span>
+              <small>split</small>
+            </button>
+            <button
+              type="button"
               className={`rail-action ${isSettingsOpen ? 'is-active' : ''}`}
               aria-label="Open settings"
-              onClick={() => setIsSettingsOpen((current) => !current)}
+              title="Open settings"
+              onClick={toggleSettings}
             >
               <span>cfg</span>
-              <small>{isSettingsOpen ? 'open' : runtimeLabel}</small>
+              <small>{isSettingsOpen ? 'open' : 'settings'}</small>
             </button>
           </div>
         </aside>
@@ -859,14 +938,14 @@ function normalizeHealth(payload: unknown): ServerHealth {
   }
 }
 
-function normalizeSettings(payload: unknown): WindowsTerminalSettings {
+function normalizeSettings(payload: unknown): TerminalSettings {
   if (!isRecord(payload) || !isRecord(payload.profiles) || !Array.isArray(payload.profiles.list)) {
     return demoSettings
   }
 
   const rawProfiles = payload.profiles.list
     .map((profile) => normalizeProfile(profile))
-    .filter((profile): profile is WindowsTerminalProfile => profile !== null)
+    .filter((profile): profile is TerminalProfile => profile !== null)
 
   return {
     $schema: asOptionalString(payload.$schema),
@@ -1003,7 +1082,7 @@ function normalizeSession(payload: unknown): SessionItem | null {
   }
 }
 
-function normalizeProfile(payload: unknown): WindowsTerminalProfile | null {
+function normalizeProfile(payload: unknown): TerminalProfile | null {
   if (!isRecord(payload)) {
     return null
   }
@@ -1024,7 +1103,7 @@ function normalizeProfile(payload: unknown): WindowsTerminalProfile | null {
     fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size),
     lineHeight: asOptionalNumber(payload.lineHeight ?? payload.line_height),
     cursorShape: asOptionalString(payload.cursorShape ?? payload.cursor_shape) as
-      | WindowsTerminalProfile['cursorShape']
+      | TerminalProfile['cursorShape']
       | undefined,
     opacity: asOptionalNumber(payload.opacity),
     useAcrylic: asOptionalBoolean(payload.useAcrylic ?? payload.use_acrylic),
@@ -1037,7 +1116,7 @@ function normalizeProfileDefaults(payload: Record<string, unknown>) {
     fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size),
     lineHeight: asOptionalNumber(payload.lineHeight ?? payload.line_height),
     cursorShape: asOptionalString(payload.cursorShape ?? payload.cursor_shape) as
-      | WindowsTerminalProfile['cursorShape']
+      | TerminalProfile['cursorShape']
       | undefined,
     opacity: asOptionalNumber(payload.opacity),
     useAcrylic: asOptionalBoolean(payload.useAcrylic ?? payload.use_acrylic),
@@ -1219,7 +1298,7 @@ function preferredActiveSessionId(
 function tabLabelForTab(
   tab: WorkspaceTab,
   sessions: SessionItem[],
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
 ) {
   const primarySession = sessions.find((session) => session.id === tab.paneIds[0])
 
@@ -1236,7 +1315,7 @@ function tabLabelForTab(
 function createFallbackSession(
   profileId: string,
   cwd: string,
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   nextSessionIdRef: MutableRefObject<number>,
 ): SessionItem {
   const profile = resolveProfile(settings, profileId)
@@ -1298,7 +1377,7 @@ function themeVars(uiTheme: UiThemeTokens) {
   } as CSSProperties
 }
 
-function resolveActionBindings(actions: WindowsTerminalAction[] | undefined): ActionBindings {
+function resolveActionBindings(actions: TerminalAction[] | undefined): ActionBindings {
   const bindings: ActionBindings = { ...DEFAULT_ACTION_BINDINGS }
 
   for (const action of actions ?? []) {
@@ -1315,10 +1394,10 @@ function resolveActionBindings(actions: WindowsTerminalAction[] | undefined): Ac
 }
 
 function applyThemeSelection(
-  current: WindowsTerminalSettings['theme'],
+  current: TerminalSettings['theme'],
   appearance: 'dark' | 'light',
   nextThemeName: string,
-): WindowsTerminalSettings['theme'] {
+): TerminalSettings['theme'] {
   if (!current || typeof current === 'string') {
     return nextThemeName
   }
@@ -1431,7 +1510,7 @@ function parseSettingsDraft(draft: string) {
 
 function cloneSettingsDocument(
   payload: unknown,
-  fallback: WindowsTerminalSettings = demoSettings,
+  fallback: TerminalSettings = demoSettings,
 ): Record<string, unknown> {
   if (isRecord(payload)) {
     return cloneJson(payload)
@@ -1449,6 +1528,13 @@ function isTypingTarget(target: EventTarget | null) {
     return false
   }
 
+  if (
+    target.classList.contains('xterm-helper-textarea') ||
+    target.closest('.xterm') !== null
+  ) {
+    return false
+  }
+
   const tag = target.tagName.toLowerCase()
   return (
     target.isContentEditable ||
@@ -1458,7 +1544,7 @@ function isTypingTarget(target: EventTarget | null) {
   )
 }
 
-function profileBadge(profile: WindowsTerminalProfile) {
+function profileBadge(profile: TerminalProfile) {
   if (profile.icon && isBadgeText(profile.icon)) {
     return profile.icon
   }
@@ -1482,7 +1568,7 @@ function isBadgeText(value: string) {
   )
 }
 
-function promptPrefixForProfile(profile: WindowsTerminalProfile, cwd: string) {
+function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
   const lowerName = profile.name.toLowerCase()
   const lowerCommand = profile.commandline?.toLowerCase() ?? ''
 
@@ -1502,7 +1588,7 @@ function promptPrefixForProfile(profile: WindowsTerminalProfile, cwd: string) {
   return `${profile.name.replace(/\s+/g, '')} ${cwd}$ `
 }
 
-function sessionTitle(session: SessionItem, profile: WindowsTerminalProfile) {
+function sessionTitle(session: SessionItem, profile: TerminalProfile) {
   return profile.tabTitle ?? session.title
 }
 

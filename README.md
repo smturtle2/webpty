@@ -2,7 +2,7 @@
 
 # webpty
 
-**A Rust-backed, Windows Terminal-compatible terminal shell for the browser**
+**Rust-backed browser terminal shell with shared profile and theme settings**
 
 [![GitHub stars](https://img.shields.io/github/stars/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/smturtle2/webpty?style=for-the-badge)](https://github.com/smturtle2/webpty/issues)
@@ -13,25 +13,14 @@
 
 </div>
 
-`webpty` keeps the terminal dominant: the shell owns almost the whole screen,
-sessions live in a narrow rail on the right, and a WT-compatible settings file
-drives profiles, themes, and keyboard shortcuts. The shipped CLI is a single
-Rust binary: `webpty up` starts the embedded web UI and the PTY runtime
-together.
+`webpty` keeps the shell in control of the screen.
+The terminal stays black and dominant, the session rail stays narrow and bright
+on the right edge, the settings drawer opens from the rail, and the shipped
+binary runs the UI and PTY runtime together with `webpty up`.
 
-The app is intentionally smaller than Windows Terminal, but it now runs a real
-Rust PTY backend instead of a mock transcript transport. Startup lands directly
-in the shell prompt, and non-Windows fallbacks preserve profile-shaped prompts
-instead of collapsing to `bash-5.2$`.
-
-Settings resolution order is:
-
-1. `webpty up --settings <path>` or `WEBPTY_SETTINGS_PATH=<path>`
-2. `./config/webpty.settings.json` from the current working directory, if present
-3. the user-scoped platform path
-
-The repository sample at `config/webpty.settings.json` is still useful for
-development, screenshots, and a known-good flat theme baseline.
+Profiles, themes, schemes, actions, and defaults use the same `settings.json`
+shape as the established terminal-profiles schema. Unknown keys are preserved on
+save, and disk loading now accepts JSONC-style comments and trailing commas.
 
 ## Preview
 
@@ -41,54 +30,43 @@ development, screenshots, and a known-good flat theme baseline.
 
 ## Current Status
 
-Implemented today:
+Implemented:
 
 - live PTY-backed sessions from a Rust/Axum server
-- embedded production web UI served directly by the Rust binary
+- embedded production UI served directly by the Rust binary
 - `webpty up` CLI entrypoint for local startup
 - `webpty up --funnel` external access through Tailscale Funnel
-- one dominant black terminal surface with a narrow white right-side session rail and no top toolbar
-- a single-split pane workspace inside the active tab
-- no injected startup banner ahead of the shell prompt
-- WT-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
-- profile launch, default profile selection, theme switching, and JSON editing in a Windows 11-style right-anchored settings panel
-- profile-matched fallback prompts on non-Windows hosts so Windows-targeted profiles do not collapse to `bash-5.2$`
+- black terminal stage with no top toolbar
+- narrow right-side rail with show/hide support
+- white flat tab surfaces and right-anchored settings drawer
+- schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
+- JSONC-style settings file loading on disk
+- per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
+- vertical and horizontal split creation inside the active tab
 - WebSocket input/output streaming and PTY resize handling
 
-Not implemented yet:
+Known gaps:
 
 - deeper pane graphs, drag rearranging, and persisted pane layouts
-- command palette and search surface
-- drag/drop or manual tab reordering
-- deeper Windows Terminal action object parity
-- full asset/icon parity for every Windows Terminal profile icon URI format
+- drag/drop tab ordering
+- broader action object coverage
+- full icon URI parity for every profile asset format
 - session restoration across app restarts
-
-## Product Direction
-
-The reference project is [microsoft/terminal](https://github.com/microsoft/terminal).
-
-The goal is not line-by-line parity. The goal is:
-
-- a shell that feels like a terminal application first
-- compatibility with the useful Windows Terminal settings subset
-- a Rust runtime that owns PTY lifecycle, input, resize, and streaming
-- restrained chrome with no persistent top toolbar and a cleaner browser footprint than a dashboard-style UI
 
 ## Quick Start
 
 ### Requirements
 
 - Rust 1.94+
-- Node.js 24+ and npm 11+ only if you are rebuilding the frontend bundle or working on the UI
+- Node.js 24+ and npm 11+ only when rebuilding the frontend bundle or working on the UI
 
-### Global install
+### Global Install
 
 ```bash
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
-From a local checkout you can also install the binary directly:
+Local checkout install:
 
 ```bash
 cargo install --path apps/server --bin webpty --locked
@@ -100,37 +78,39 @@ cargo install --path apps/server --bin webpty --locked
 webpty up
 ```
 
-For the repository sample settings and screenshots:
+Run with the repository sample settings:
 
 ```bash
 webpty up --settings ./config/webpty.settings.json
 ```
 
-### Run with external access
+### External Access
 
 ```bash
 webpty up --funnel
 ```
 
-`--funnel` uses the local `tailscale` CLI to publish the embedded web UI over
-Tailscale Funnel. Run `tailscale up` first and make sure the node has Funnel
-capability enabled.
+`--funnel` uses the local `tailscale` CLI to publish the embedded web UI. Run
+`tailscale up` first and make sure the node has Funnel capability enabled.
 
-### Settings Path
+## Settings Path
 
 Resolution order:
 
-- `webpty up --settings <path>`
-- `WEBPTY_SETTINGS_PATH=<path>`
-- `./config/webpty.settings.json` in the current working directory, if present
-- user-scoped platform path
+1. `webpty up --settings <path>`
+2. `WEBPTY_SETTINGS_PATH=<path>`
+3. `./config/webpty.settings.json` in the current working directory, if present
+4. user-scoped platform path
 
 User-scoped platform path:
 
 - Linux/macOS: `~/.config/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
-### Development
+If the file does not exist, `webpty` creates a default one.
+If an existing file is invalid, startup fails without overwriting it.
+
+## Development
 
 Install workspace dependencies:
 
@@ -150,8 +130,8 @@ Run the Rust runtime:
 cargo run -- up
 ```
 
-The Vite dev server proxies `/api` and `/ws` requests to `http://127.0.0.1:3001`,
-while production builds are emitted into `apps/server/ui` and served by the Rust
+The Vite dev server proxies `/api` and `/ws` to `http://127.0.0.1:3001`, while
+production builds are emitted into `apps/server/ui` and served by the Rust
 binary.
 
 ## Validate
@@ -162,38 +142,18 @@ cargo test --manifest-path apps/server/Cargo.toml
 cargo check
 ```
 
-`npm run lint:web` is still configured, but it still hangs in this workspace and
-needs separate investigation.
-
-## Project Structure
-
-```text
-.
-├── apps/
-│   ├── server/   # Axum PTY runtime and WT-compatible settings contracts
-│   └── web/      # React/Vite terminal shell UI
-├── config/
-│   └── webpty.settings.json
-├── docs/
-│   ├── compatibility.md
-│   ├── research-spec.md
-│   ├── runtime-contracts.md
-│   └── assets/
-└── README.md
-```
-
 ## Architecture
 
 ```text
 React shell
   ├─ terminal stage
   ├─ right-side session rail
-  └─ right-anchored settings panel
+  └─ right-anchored settings drawer
        ↓
 Rust runtime
-  ├─ serves embedded UI assets
-  ├─ WT-compatible settings load/save
-  ├─ PTY-backed session lifecycle
+  ├─ embedded asset serving
+  ├─ settings load/save
+  ├─ PTY session lifecycle
   ├─ input / resize / output streaming
   ├─ session creation and deletion
   └─ optional Tailscale Funnel
@@ -204,12 +164,3 @@ Rust runtime
 - [Compatibility notes](./docs/compatibility.md)
 - [Research spec](./docs/research-spec.md)
 - [Runtime contracts](./docs/runtime-contracts.md)
-
-## Roadmap
-
-- [x] Replace mock transport with a PTY-backed session layer
-- [x] Move to a terminal-dominant layout with a right-side session rail
-- [x] Keep WT-compatible theme and profile editing in-app
-- [ ] Expand pane management beyond the current split layout
-- [ ] Reintroduce search and command palette surfaces
-- [ ] Expand WT settings and action compatibility

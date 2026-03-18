@@ -1,15 +1,15 @@
 import type {
   ResolvedProfile,
   SessionItem,
+  TerminalColorScheme,
+  TerminalProfile,
+  TerminalSettings,
+  TerminalTheme,
   ThemeSelection,
   UiThemeTokens,
-  WindowsTerminalColorScheme,
-  WindowsTerminalProfile,
-  WindowsTerminalSettings,
-  WindowsTerminalTheme,
 } from '../types'
 
-const DEFAULT_SCHEME: WindowsTerminalColorScheme = {
+const DEFAULT_SCHEME: TerminalColorScheme = {
   name: 'Campbell',
   background: '#0c0c0c',
   foreground: '#f2f2f2',
@@ -33,12 +33,12 @@ const DEFAULT_SCHEME: WindowsTerminalColorScheme = {
   brightWhite: '#f2f2f2',
 }
 
-export function profileIdentifier(profile: WindowsTerminalProfile): string {
+export function profileIdentifier(profile: TerminalProfile): string {
   return profile.guid ?? profile.id ?? slugify(profile.name)
 }
 
 export function resolveProfile(
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   profileId?: string,
 ): ResolvedProfile {
   const requestedId = profileId ?? settings.defaultProfile
@@ -70,9 +70,9 @@ export function resolveThemeName(
 }
 
 export function resolveTheme(
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   appearance: 'dark' | 'light',
-): WindowsTerminalTheme | null {
+): TerminalTheme | null {
   const selected = resolveThemeName(settings.theme, appearance)
 
   if (!selected) {
@@ -83,7 +83,7 @@ export function resolveTheme(
 }
 
 export function resolveWindowAppearance(
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   systemAppearance: 'dark' | 'light',
 ): 'dark' | 'light' {
   const theme = resolveTheme(settings, systemAppearance)
@@ -97,10 +97,10 @@ export function resolveWindowAppearance(
 }
 
 export function resolveScheme(
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   profile: ResolvedProfile,
   appearance: 'dark' | 'light',
-): WindowsTerminalColorScheme {
+): TerminalColorScheme {
   const selection = profile.colorScheme
   const selectedName =
     typeof selection === 'string'
@@ -111,7 +111,7 @@ export function resolveScheme(
 }
 
 export function resolveUiTheme(
-  settings: WindowsTerminalSettings,
+  settings: TerminalSettings,
   profile: ResolvedProfile,
   appearance: 'dark' | 'light',
 ): UiThemeTokens {

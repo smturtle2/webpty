@@ -1,6 +1,6 @@
-import type { ServerHealth, SessionItem, WindowsTerminalSettings } from '../types'
+import type { ServerHealth, SessionItem, TerminalSettings } from '../types'
 
-export const demoSettings: WindowsTerminalSettings = {
+export const demoSettings: TerminalSettings = {
   $schema: 'https://aka.ms/terminal-profiles-schema',
   defaultProfile: '{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}',
   copyFormatting: 'all',

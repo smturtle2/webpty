@@ -22,7 +22,7 @@ Example:
 ```json
 {
   "status": "ok",
-  "message": "WT-compatible PTY server and embedded shell ready",
+  "message": "Schema-compatible PTY server and embedded shell ready",
   "websocketPath": "/ws/:sessionId",
   "mode": "standalone-shell",
   "features": [
@@ -41,11 +41,11 @@ Example:
 
 ### `GET /`
 
-Serves the embedded production web UI that is bundled into the Rust binary.
+Serves the embedded production web UI bundled into the Rust binary.
 
 ### `GET /api/settings`
 
-Returns the current WT-compatible `settings.json` subset loaded from the active
+Returns the current shared `settings.json` subset loaded from the active
 settings path.
 
 Default path selection:
@@ -55,11 +55,13 @@ Default path selection:
 - Linux/macOS: `~/.config/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
+Disk parsing accepts JSONC-style comments and trailing commas.
+
 ### `PUT /api/settings`
 
-Accepts the same WT-compatible JSON subset and persists it back to the active
-settings path. Unsupported keys that travel alongside the supported subset are
-preserved on round-trip.
+Accepts the same shared JSON subset and persists it back to the active settings
+path. Unsupported keys that travel alongside the supported subset are preserved
+on round-trip.
 
 ### `GET /api/sessions`
 
@@ -78,12 +80,9 @@ Accepted fields:
 Notes:
 
 - requests targeting a `hidden: true` profile return `400`
-- if `title` is omitted, the runtime uses the profile `tabTitle` when present,
-  otherwise the profile `name`
+- if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`
 - the runtime does not inject a synthetic startup banner before the shell prompt
-- on non-Windows hosts, Windows-targeted profiles fall back to a local shell
-  with a prompt shape that matches the requested profile more closely than a
-  raw `bash-5.2$` prompt
+- on non-Windows hosts, platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
 
 Returns:
 
@@ -92,7 +91,7 @@ Returns:
 - `pane`
 
 The frontend primarily consumes `session`, but `tab` and `pane` are kept for
-future parity with richer terminal layouts.
+future parity with richer layouts.
 
 ### `DELETE /api/sessions/:session_id`
 
@@ -128,11 +127,9 @@ Connection behavior:
 
 ## Prototype Assumptions
 
-- The UI can still fall back to demo mode if the backend is unavailable.
-- The backend is now a real PTY runtime that also serves the production shell bundle.
-- WT-compatible theme and profile definitions remain the main source of truth.
-- `webpty up --funnel` depends on the local `tailscale` client and an authenticated
-  node with Funnel capability.
-- `webpty up --funnel` reuses an existing Funnel mapping for the same local target when
-  possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit.
-- Advanced pane graphs, search, and command palette remain future milestones.
+- the UI can still fall back to demo mode if the backend is unavailable
+- the backend is a real PTY runtime that also serves the production shell bundle
+- profile and theme definitions remain the main source of truth
+- `webpty up --funnel` depends on the local `tailscale` client and an authenticated node with Funnel capability
+- `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit
+- advanced pane graphs, search, and command palette remain future milestones
