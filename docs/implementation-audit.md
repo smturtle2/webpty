@@ -13,11 +13,10 @@ This pass checked the repo against the current product constraints:
 
 ## Findings Addressed In This Pass
 
-- fixed frontend lint debt in `apps/web/src/App.tsx`
-- extended the shared theme model and UI to cover `window.frame` and `window.unfocusedFrame`
-- added token shortcut chips for theme color fields so shared color tokens are easier to enter without dropping down to raw JSON
-- refreshed the shipped sample settings and demo data so frame colors are visible immediately in the UI
-- regenerated the documentation screenshots from the running app after the UI refresh
+- rebuilt the embedded frontend bundle so the Rust runtime serves the current shell UI instead of stale assets
+- revalidated the runtime contracts that matter for this spec: `webpty up`, `webpty up --funnel`, shared settings loading, and per-profile prompt shaping
+- refreshed the documentation screenshots from the running app after the latest UI pass
+- aligned the docs with the current Theme Studio / Profile Studio naming that ships in the interface
 
 ## Confirmed Working
 
