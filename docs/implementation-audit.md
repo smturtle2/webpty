@@ -13,6 +13,10 @@ This pass checked the repo against the current product constraints:
 
 ## Findings Addressed In This Pass
 
+- revalidated the one-command global install path with `cargo install --git ... --bin webpty --locked`
+- removed hardcoded external `$schema` URLs from generated defaults, demo data, and the repo sample while keeping user-provided `$schema` values round-trippable
+- fixed Theme Studio / Profile Studio helper copy so it no longer inherits the uppercase field-label styling
+- cleared the remaining frontend lint warnings around `useEffectEvent` dependencies in the xterm viewport
 - rebuilt the embedded frontend bundle so the Rust runtime serves the current shell UI instead of stale assets
 - revalidated the runtime contracts that matter for this spec: `webpty up`, `webpty up --funnel`, shared settings loading, and per-profile prompt shaping
 - sanitized session preview summaries so PTY control sequences no longer leak through `/api/sessions`
@@ -46,6 +50,7 @@ This pass checked the repo against the current product constraints:
 ## Confirmed Working
 
 - Rust PTY backend, embedded UI serving, and `webpty up`
+- one-command global install from the repository root through `cargo install --git ... --bin webpty --locked`
 - external exposure through `webpty up --funnel`
 - shared `settings.json` loading, persistence, JSONC parsing, and unknown-key round-trip
 - right-rail settings workspace with separate Theme Studio, Profile Studio, Language, JSON, and shortcut surfaces
@@ -63,6 +68,7 @@ This pass checked the repo against the current product constraints:
 - icon-first right rail with safe collapsed bounds
 - subtle split-pane separators and active-pane framing inside the terminal workspace
 - broader text-overflow protection in the right rail and settings workspace
+- sentence-case helper copy inside the Theme/Profile studios
 
 ## Remaining Gaps
 

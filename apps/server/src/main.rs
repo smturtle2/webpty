@@ -41,7 +41,6 @@ const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
 const DEFAULT_TAILSCALE_UP_TIMEOUT: &str = "30s";
-const SETTINGS_SCHEMA_URL: &str = "https://aka.ms/terminal-profiles-schema";
 const POWERSHELL_PROFILE_GUID: &str = "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}";
 const UBUNTU_PROFILE_GUID: &str = "{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}";
 const AZURE_OPS_PROFILE_GUID: &str = "{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}";
@@ -3023,7 +3022,7 @@ fn default_settings_for_host(host: HostPlatform) -> TerminalSettings {
         .unwrap_or_else(|| HOST_SHELL_PROFILE_GUID.to_string());
 
     TerminalSettings {
-        schema: Some(SETTINGS_SCHEMA_URL.to_string()),
+        schema: None,
         default_profile,
         copy_formatting: Some("all".to_string()),
         theme: Some(ThemeSelection::Named("Classic".to_string())),
@@ -4106,7 +4105,7 @@ mod tests {
         let fixture = r#"
         {
           // shared profile settings
-          "$schema": "https://aka.ms/terminal-profiles-schema",
+          "$schema": "https://example.invalid/webpty.schema.json",
           "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
           "profiles": {
             "list": [
@@ -4178,7 +4177,7 @@ mod tests {
         let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
         let fixture = r#"
         {
-          "$schema": "https://aka.ms/terminal-profiles-schema",
+          "$schema": "https://example.invalid/webpty.schema.json",
           "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
           "experimentalFeature": true,
           "profiles": {

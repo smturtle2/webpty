@@ -57,7 +57,7 @@
 - 프롬프트, 탭 강조색, 셸 색을 즉시 확인할 수 있는 프로필 미리보기
 - `{cwd}`, `{user}`, `{host}`, `{profile}`, `{symbol}` 토큰을 쓰는 선택적 `webpty.prompt` 템플릿
 - 숨김 프로필이 실수로 시작 프로필이 되지 않도록 하는 startup-profile guard
-- schema 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
+- 호환 가능한 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
 - `{ "command": { "action": "newTab" } }` 같은 문자열/객체형 액션 바인딩 지원
@@ -68,6 +68,7 @@
 - 기본 zsh 호스트 셸도 clean interactive 경로로 실행되어 macOS 기본 셸 환경에서 프로필 프롬프트가 바로 덮이지 않음
 - 첫 실행 시 생성되는 기본 설정이 실행 OS를 따라가도록 한 host-scoped profile/settings 생성
 - macOS의 `~/Library/Application Support/webpty/settings.json`을 포함한 host-native 설정 경로
+- 기본 설정, 데모 데이터, 레포 샘플에서 외부 `$schema` URL 하드코딩을 제거했고, 사용자가 넣은 `$schema` 값은 그대로 round-trip됨
 - Runtime host metadata를 이용해 Profile Studio의 command/start directory 힌트가 실행 OS에 맞춰짐
 - 사용자 전역 설정이 기본 우선순위를 가지며, 레포 샘플 설정은 `--settings`로만 opt-in
 - bracketed-paste 같은 제어 시퀀스가 요약 라인에 새지 않도록 하는 session preview sanitizing
@@ -81,6 +82,7 @@
 - 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 워크스페이스에 렌더링
 - 프런트 빌드 후 Rust 임베디드 UI가 새 자산을 다시 포함하도록 하는 재빌드 추적
 - 안전한 collapsed bounds, 더 얇아진 밀도, 더 넓은 텍스트 overflow 보호를 가진 icon-first 우측 레일
+- Profile Studio / Theme Studio의 helper 문구가 label 스타일 대문자로 잘못 렌더링되지 않도록 수정
 - `npm run docs:shots`로 재현 가능한 문서 스크린샷 갱신
 - 레포 샘플 설정 기준으로 다시 캡처한 최신 문서 스크린샷
 
@@ -104,6 +106,8 @@
 ```bash
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
+
+현재 워크스페이스 구조에서도 위 명령으로 레포 루트에서 바로 글로벌 설치가 되는 것을 다시 확인했습니다.
 
 설치 뒤 `webpty`가 보이지 않으면 Cargo bin 디렉터리
 (`$HOME/.cargo/bin`)를 `PATH`에 추가하세요.

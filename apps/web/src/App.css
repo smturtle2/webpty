@@ -644,8 +644,8 @@
   background: #f8f8f8;
 }
 
-.field-row > span,
-.field-row-toggle > span {
+.field-row > span:first-child,
+.field-row-toggle > span:first-child {
   color: #666;
   font-size: 11px;
   font-weight: 700;
@@ -1551,10 +1551,29 @@ select.field-input {
   gap: 7px;
 }
 
-.field-row > span,
-.field-row-toggle > span {
+.field-row > span:first-child,
+.field-row-toggle > span:first-child {
   font-size: 10px;
   letter-spacing: 0.12em;
+}
+
+.drawer-header-actions > *,
+.editor-actions > *,
+.field-actions > *,
+.theme-grid > * {
+  min-width: 0;
+}
+
+.toolbar-button,
+.theme-chip,
+.status-pill,
+.shortcut-pill,
+.profile-badge {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field-help {
@@ -2242,5 +2261,15 @@ select.field-input {
 
   .rail-tab {
     min-height: 62px;
+  }
+
+  .toolbar-button,
+  .theme-chip,
+  .status-pill,
+  .shortcut-pill,
+  .profile-badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
   }
 }

@@ -61,7 +61,7 @@ Implemented:
 - live profile preview surface for prompt, tab accent, and shell color verification
 - optional `webpty.prompt` templates with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - launchable startup-profile guards so hidden profiles cannot become the default shell accidentally
-- schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
+- compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel
 - string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
@@ -72,6 +72,7 @@ Implemented:
 - default zsh host launches now use a clean interactive path so macOS-style defaults do not override profile-shaped prompts immediately
 - host-scoped default settings generation so first-run profiles follow the runtime OS instead of shipping Windows-only launch commands everywhere
 - host-native default settings paths, including `~/Library/Application Support/webpty/settings.json` on macOS
+- seeded defaults, demo data, and the repo sample no longer hardcode a third-party `$schema` URL, while custom `$schema` values still round-trip untouched
 - runtime host metadata now feeds host-aware command and directory hints inside Profile Studio
 - user-scoped settings now win by default, while the repo sample stays opt-in through `--settings`
 - sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
@@ -85,6 +86,7 @@ Implemented:
 - browser-safe profile icon sources rendered in the rail and settings workspace
 - embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
 - icon-first right rail with safe collapsed bounds, tighter density, and broader text-overflow protection
+- helper copy in Profile Studio and Theme Studio now keeps sentence casing instead of inheriting label-style uppercase treatment
 - reproducible screenshot refresh through `npm run docs:shots`
 - refreshed repository screenshots captured from the sample settings catalog for stable docs output
 
@@ -108,6 +110,8 @@ Known gaps:
 ```bash
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
+
+The workspace layout is installable directly from the repository root; the command above was revalidated against the current tree.
 
 If `webpty` is not found after install, add Cargo's bin directory to `PATH`
 (`$HOME/.cargo/bin` on Linux/macOS).

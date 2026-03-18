@@ -81,6 +81,7 @@ Action fields currently mapped by the frontend:
 - the repo sample at `./config/webpty.settings.json` is intentionally opt-in through `webpty up --settings ./config/webpty.settings.json`
 - the repo sample is a fixed demo catalog for screenshots and manual QA; it is not the same thing as the host-generated first-run defaults
 - if the settings file does not exist, `webpty` creates a default one
+- generated defaults and the repo sample do not hardcode a `$schema` value; if a settings file already includes `$schema`, it is preserved on load/save
 - generated first-run settings now follow the runtime host: Windows seeds PowerShell/WSL-oriented profiles, while Linux/macOS seed local shell-first profiles
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
@@ -94,6 +95,7 @@ Action fields currently mapped by the frontend:
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
 - theme and profile color inputs keep full token and hex values visible instead of clipping them down to a prefix stub
 - theme and profile color fields also offer shortcut chips for shared token values such as `accent`, `terminalBackground`, `terminalForeground`, `cursorColor`, and `selectionBackground`
+- helper copy inside Theme Studio and Profile Studio keeps sentence casing instead of inheriting the uppercase field-label treatment
 - Profile Studio can edit `webpty.prompt` with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - Profile Studio and Theme Studio previews reuse the same profile-family prompt heuristics as the runtime shell launch path
 - prompt previews now sanitize `{profile}` the same way the runtime shell launch path does

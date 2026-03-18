@@ -1,7 +1,6 @@
 import type { ServerHealth, SessionItem, TerminalSettings } from '../types'
 
 export const demoSettings: TerminalSettings = {
-  $schema: 'https://aka.ms/terminal-profiles-schema',
   defaultProfile: '{e8b9f7d8-9f74-4a65-9f6d-43ba3ee24411}',
   copyFormatting: 'all',
   theme: 'Classic',

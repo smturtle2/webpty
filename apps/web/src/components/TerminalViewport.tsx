@@ -249,7 +249,7 @@ export function TerminalViewport({
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
     queueFitPasses()
-  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, queueFitPasses, scheme])
+  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, scheme])
 
   useEffect(() => {
     if (!active) {
@@ -348,7 +348,7 @@ export function TerminalViewport({
       termRef.current?.focus()
       queueFitPasses()
     }
-  }, [active, queueFitPasses])
+  }, [active])
 
   return (
     <div
