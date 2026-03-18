@@ -34,7 +34,7 @@ Example:
     "sessions-create-delete",
     "websocket-live-pty",
     "pty-resize-input-output",
-    "funnel-ssh"
+    "tailscale-funnel"
   ]
 }
 ```
@@ -118,4 +118,6 @@ Connection behavior:
 - The UI can still fall back to demo mode if the backend is unavailable.
 - The backend is now a real PTY runtime that also serves the production shell bundle.
 - WT-compatible theme and profile definitions remain the main source of truth.
+- `webpty up --funnel` depends on the local `tailscale` client and an authenticated
+  node with Funnel capability.
 - Split panes, search, and command palette remain future milestones.

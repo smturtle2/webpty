@@ -18,7 +18,7 @@ Included:
 - one dominant terminal viewport
 - narrow right-side session rail
 - minimal rail actions
-- a right-anchored WT-compatible settings studio
+- a right-anchored WT-compatible settings panel
 - keyboard session switching and creation
 - live PTY transport behind the UI
 - one-command Rust startup via `webpty up`
@@ -45,7 +45,7 @@ Excluded for now:
 - `Ctrl+Shift+Tab` cycles backwards
 - `Ctrl+T` creates a tab
 - `Ctrl+W` closes the active tab when more than one exists
-- `Ctrl+,` opens the settings studio
+- `Ctrl+,` opens the settings panel
 
 These bindings are sourced from the WT-compatible `actions[]` subset when present.
 

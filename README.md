@@ -26,7 +26,7 @@ Rust PTY backend instead of a mock transcript transport.
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
-![webpty settings studio](./docs/assets/webpty-studio.png)
+![webpty settings panel](./docs/assets/webpty-studio.png)
 
 ## Current Status
 
@@ -35,10 +35,10 @@ Implemented today:
 - live PTY-backed sessions from a Rust/Axum server
 - embedded production web UI served directly by the Rust binary
 - `webpty up` CLI entrypoint for local startup
-- `webpty up --funnel` external access through an SSH reverse tunnel
-- one dominant black terminal surface with a narrow white right-side session rail
+- `webpty up --funnel` external access through Tailscale Funnel
+- one dominant black terminal surface with a narrow white right-side session rail and no top toolbar
 - WT-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
-- profile launch, default profile selection, and theme switching in a right-anchored settings studio
+- profile launch, default profile selection, theme switching, and JSON editing in a Windows 11-style right-anchored settings panel
 - WebSocket input/output streaming and PTY resize handling
 
 Not implemented yet:
@@ -70,13 +70,13 @@ The goal is not line-by-line parity. The goal is:
 ### Global install
 
 ```bash
-cargo install --git https://github.com/smturtle2/webpty --locked
+cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
 From a local checkout you can also install the binary directly:
 
 ```bash
-cargo install --path apps/server --locked
+cargo install --path apps/server --bin webpty --locked
 ```
 
 ### Run
@@ -91,8 +91,9 @@ webpty up
 webpty up --funnel
 ```
 
-`--funnel` uses the local OpenSSH client and `localhost.run` to expose the
-local server. `ssh` must be available on the host.
+`--funnel` uses the local `tailscale` CLI to publish the embedded web UI over
+Tailscale Funnel. Run `tailscale up` first and make sure the node has Funnel
+capability enabled.
 
 ### Development
 
@@ -125,8 +126,8 @@ npm run build:web
 cargo check
 ```
 
-`npm run lint:web` is still configured, but it currently hangs in this workspace
-and needs separate investigation.
+`npm run lint:web` is still configured, but it still hangs in this workspace and
+needs separate investigation.
 
 ## Project Structure
 
@@ -151,7 +152,7 @@ and needs separate investigation.
 React shell
   ├─ terminal stage
   ├─ right-side session rail
-  └─ right-anchored settings studio
+  └─ right-anchored settings panel
        ↓
 Rust runtime
   ├─ serves embedded UI assets
@@ -159,7 +160,7 @@ Rust runtime
   ├─ PTY-backed session lifecycle
   ├─ input / resize / output streaming
   ├─ session creation and deletion
-  └─ optional SSH funnel
+  └─ optional Tailscale Funnel
 ```
 
 ## Documentation

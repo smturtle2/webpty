@@ -2,7 +2,7 @@ import type { ServerHealth, SessionItem, WindowsTerminalSettings } from '../type
 
 export const demoSettings: WindowsTerminalSettings = {
   $schema: 'https://aka.ms/terminal-profiles-schema',
-  defaultProfile: '{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}',
+  defaultProfile: '{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}',
   copyFormatting: 'all',
   theme: 'Blueprint',
   themes: [
@@ -84,7 +84,7 @@ export const demoSettings: WindowsTerminalSettings = {
         icon: 'UB',
         commandline: 'wsl.exe -d Ubuntu',
         startingDirectory: '~',
-        colorScheme: 'One Half Dark',
+        colorScheme: 'Campbell',
         tabColor: '#f0a355',
       },
       {
@@ -175,7 +175,7 @@ export const demoSessions: SessionItem[] = [
   {
     id: 'session-shell',
     title: 'workspace-shell',
-    profileId: '{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}',
+    profileId: '{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}',
     status: 'running',
     hasActivity: false,
     lastUsedLabel: 'Now',
@@ -224,5 +224,5 @@ export const demoHealth: ServerHealth = {
   message: 'Demo mode',
   websocketPath: '/ws/:sessionId',
   mode: 'demo-shell',
-  features: ['settings-json', 'theme-studio', 'session-tabs'],
+  features: ['settings-json', 'settings-panel', 'session-tabs'],
 }

@@ -20,7 +20,7 @@
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
-![webpty settings studio](./docs/assets/webpty-studio.png)
+![webpty settings panel](./docs/assets/webpty-studio.png)
 
 ## 현재 상태
 
@@ -29,10 +29,10 @@
 - Rust/Axum 서버 기반 PTY 세션 생성과 WebSocket 스트리밍
 - Rust 바이너리에서 직접 서빙되는 임베디드 프로덕션 UI
 - `webpty up` CLI 진입점
-- `webpty up --funnel` 외부 접속용 SSH reverse tunnel
-- 검은 터미널이 화면 대부분을 차지하고, 우측에는 흰색 기반의 좁은 세션 레일 배치
+- `webpty up --funnel` 외부 접속용 Tailscale Funnel
+- 상단 툴바 없이 검은 터미널이 화면 대부분을 차지하고, 우측에는 흰색 기반의 좁은 세션 레일 배치
 - WT 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
-- 우측 기준 settings studio에서 프로필 실행, 기본 프로필 변경, 테마 전환
+- 우측 기준 Windows 11 스타일 설정 패널에서 프로필 실행, 기본 프로필 변경, 테마 전환, JSON 편집
 - PTY 입력, 리사이즈, 출력 스트림 처리
 
 아직 없는 것:
@@ -64,13 +64,13 @@
 ### 글로벌 설치
 
 ```bash
-cargo install --git https://github.com/smturtle2/webpty --locked
+cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
 로컬 체크아웃에서는 아래 한 줄로도 설치할 수 있습니다.
 
 ```bash
-cargo install --path apps/server --locked
+cargo install --path apps/server --bin webpty --locked
 ```
 
 ### 실행
@@ -85,8 +85,9 @@ webpty up
 webpty up --funnel
 ```
 
-`--funnel`은 로컬 OpenSSH 클라이언트와 `localhost.run`을 이용해 외부 접근
-주소를 엽니다. 호스트에 `ssh`가 있어야 합니다.
+`--funnel`은 로컬 `tailscale` CLI를 이용해 내장 웹 UI를 Tailscale Funnel로
+외부 공개합니다. 먼저 `tailscale up`을 실행하고, 현재 노드에 Funnel 권한이
+있는지 확인해야 합니다.
 
 ### 개발 모드
 
@@ -118,7 +119,7 @@ npm run build:web
 cargo check
 ```
 
-`npm run lint:web`는 현재 이 워크스페이스에서 멈추는 문제가 있어 별도
+`npm run lint:web`는 현재도 이 워크스페이스에서 멈추는 문제가 있어 별도
 조사가 필요합니다.
 
 ## 디렉터리 구조

@@ -17,8 +17,10 @@ import {
   profileIdentifier,
   resolveProfile,
   resolveScheme,
+  resolveTheme,
   resolveThemeName,
   resolveUiTheme,
+  resolveWindowAppearance,
   sessionLabel,
 } from './lib/windowsTerminal'
 import type {
@@ -32,8 +34,15 @@ import type {
 
 type ConnectionState = 'connecting' | 'live' | 'offline'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
+type PaneLayout = 'single' | 'vertical' | 'horizontal'
 type SupportedActionCommand = 'newTab' | 'closeTab' | 'nextTab' | 'prevTab' | 'openSettings'
 type ActionBindings = Record<SupportedActionCommand, string[]>
+
+interface WorkspaceTab {
+  id: string
+  paneIds: string[]
+  layout: PaneLayout
+}
 
 const DEFAULT_ACTION_BINDINGS: ActionBindings = {
   newTab: ['ctrl+t'],
@@ -49,11 +58,13 @@ function App() {
     cloneSettingsDocument(demoSettings),
   )
   const [sessions, setSessions] = useState<SessionItem[]>(demoSessions)
+  const [tabs, setTabs] = useState<WorkspaceTab[]>(() => buildTabsFromSessions(demoSessions))
+  const [activeTabId, setActiveTabId] = useState(() => buildTabsFromSessions(demoSessions)[0].id)
   const [activeSessionId, setActiveSessionId] = useState(demoSessions[0].id)
   const [serverHealth, setServerHealth] = useState<ServerHealth>(demoHealth)
   const [remoteReady, setRemoteReady] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline')
-  const [appearance, setAppearance] = useState<'dark' | 'light'>(resolveAppearance())
+  const [systemAppearance, setSystemAppearance] = useState<'dark' | 'light'>(resolveAppearance())
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsDraft, setSettingsDraft] = useState(formatSettingsJson(demoSettings))
   const [settingsError, setSettingsError] = useState<string | null>(null)
@@ -61,14 +72,26 @@ function App() {
   const [isBooting, setIsBooting] = useState(true)
   const nextSessionIdRef = useRef(demoSessions.length + 1)
 
+  const currentTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? buildTabsFromSessions(demoSessions)[0]
+  const paneSessions = currentTab.paneIds
+    .map((paneId) => sessions.find((session) => session.id === paneId))
+    .filter((session): session is SessionItem => session !== undefined)
   const activeSession =
-    sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? demoSessions[0]
+    sessions.find((session) => session.id === activeSessionId) ??
+    paneSessions[0] ??
+    sessions[0] ??
+    demoSessions[0]
+  const uiAppearance = resolveWindowAppearance(settings, systemAppearance)
   const activeProfile = resolveProfile(settings, activeSession.profileId)
   const defaultProfile = resolveProfile(settings, settings.defaultProfile)
-  const activeScheme = resolveScheme(settings, activeProfile, appearance)
-  const activeSessionLabel = sessionTitle(activeSession, activeProfile)
-  const themeName = resolveThemeName(settings.theme, appearance) ?? 'System'
-  const uiTheme = resolveUiTheme(settings, activeProfile, appearance)
+  const activeScheme = resolveScheme(settings, activeProfile, uiAppearance)
+  const activeTheme = resolveTheme(settings, uiAppearance)
+  const themeName = resolveThemeName(settings.theme, uiAppearance) ?? 'System'
+  const uiTheme = resolveUiTheme(settings, activeProfile, uiAppearance)
+  const closeButtonMode = activeTheme?.tab?.showCloseButton ?? 'hover'
+  const canSplitCurrentTab = currentTab.paneIds.length === 1
+  const visiblePaneSessions = paneSessions.length > 0 ? paneSessions : [activeSession]
+  const activeTabLabel = tabLabelForTab(currentTab, sessions, settings)
   const visibleProfiles = settings.profiles.list
     .filter((profile) => profile.hidden !== true)
     .map((profile) => resolveProfile(settings, profileIdentifier(profile)))
@@ -83,15 +106,23 @@ function App() {
   const isDraftDirty = settingsDraft !== formatSettingsJson(settingsDocument)
   const runtimeLabel = canConnect
     ? connectionState === 'live'
-      ? 'live runtime'
+      ? 'live'
       : connectionState
-    : 'demo mode'
+    : 'demo'
+  const saveLabel =
+    saveState === 'saving'
+      ? 'saving'
+      : saveState === 'saved'
+        ? 'saved'
+        : saveState === 'error'
+          ? 'error'
+          : 'idle'
   const runtimeMessage = isBooting ? 'Syncing runtime contracts…' : serverHealth.message
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
     const handleChange = () => {
-      setAppearance(mediaQuery.matches ? 'light' : 'dark')
+      setSystemAppearance(mediaQuery.matches ? 'light' : 'dark')
     }
 
     handleChange()
@@ -133,6 +164,8 @@ function App() {
         sessionsResult.status === 'fulfilled'
           ? normalizeSessions(sessionsResult.value)
           : demoSessions
+      const nextVisibleSessions = nextSessions.length > 0 ? nextSessions : demoSessions
+      const nextTabs = buildTabsFromSessions(nextVisibleSessions)
       const ready =
         healthResult.status === 'fulfilled' &&
         settingsResult.status === 'fulfilled' &&
@@ -144,12 +177,10 @@ function App() {
         setSettings(nextSettings)
         setSettingsDocument(nextSettingsDocument)
         setSettingsDraft(formatSettingsJson(nextSettingsDocument))
-        setSessions(nextSessions.length > 0 ? nextSessions : demoSessions)
-        setActiveSessionId((currentId) =>
-          nextSessions.some((session) => session.id === currentId)
-            ? currentId
-            : nextSessions[0]?.id ?? demoSessions[0].id,
-        )
+        setSessions(nextVisibleSessions)
+        setTabs(nextTabs)
+        setActiveSessionId(nextTabs[0].paneIds[0])
+        setActiveTabId(nextTabs[0].id)
         setRemoteReady(ready)
       })
 
@@ -168,13 +199,37 @@ function App() {
       return
     }
 
-    if (!sessions.some((session) => session.id === activeSessionId)) {
-      setActiveSessionId(sessions[0].id)
+    const nextTabs = syncTabsWithSessions(tabs, sessions)
+    const needsTabSync = JSON.stringify(nextTabs) !== JSON.stringify(tabs)
+
+    if (needsTabSync) {
+      setTabs(nextTabs)
     }
-  }, [activeSessionId, sessions])
+
+    if (!sessions.some((session) => session.id === activeSessionId)) {
+      setActiveSessionId(nextTabs[0]?.paneIds[0] ?? sessions[0].id)
+    }
+
+    if (!nextTabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId(nextTabs[0]?.id ?? tabIdForSession(sessions[0].id))
+      return
+    }
+
+    if (findTabByPaneId(nextTabs, activeSessionId)?.id !== activeTabId) {
+      const owner = findTabByPaneId(nextTabs, activeSessionId)
+      if (owner) {
+        setActiveTabId(owner.id)
+      }
+    }
+  }, [activeSessionId, activeTabId, sessions, tabs])
 
   function activateSession(sessionId: string) {
+    const owner = findTabByPaneId(tabs, sessionId)
+
     startTransition(() => {
+      if (owner) {
+        setActiveTabId(owner.id)
+      }
       setActiveSessionId(sessionId)
       setSessions((currentSessions) =>
         currentSessions.map((session) => {
@@ -200,16 +255,19 @@ function App() {
   }
 
   function cycleSession(direction: 1 | -1) {
-    if (sessions.length <= 1) {
+    if (tabs.length <= 1) {
       return
     }
 
-    const currentIndex = sessions.findIndex((session) => session.id === activeSessionId)
-    const nextIndex = (currentIndex + direction + sessions.length) % sessions.length
-    activateSession(sessions[nextIndex].id)
+    const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId)
+    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length
+    const nextTab = tabs[nextIndex]
+
+    setActiveTabId(nextTab.id)
+    activateSession(nextTab.paneIds[0])
   }
 
-  async function createSession(profileId = activeProfile.id) {
+  async function createSession(profileId = activeProfile.id, mode: PaneLayout = 'single') {
     const targetProfile = resolveProfile(settings, profileId)
     const nextCwd = targetProfile.startingDirectory ?? activeSession.cwd
 
@@ -228,8 +286,11 @@ function App() {
         const created = normalizeCreatedSession(payload)
 
         if (created) {
+          const nextTabs = appendSessionToTabs(tabs, activeTabId, created.id, mode)
           startTransition(() => {
             setSessions((currentSessions) => [...promoteSessions(currentSessions), created])
+            setTabs(nextTabs)
+            setActiveTabId(findTabByPaneId(nextTabs, created.id)?.id ?? tabIdForSession(created.id))
             setActiveSessionId(created.id)
           })
           return
@@ -240,9 +301,12 @@ function App() {
     }
 
     const fallback = createFallbackSession(profileId, nextCwd, settings, nextSessionIdRef)
+    const nextTabs = appendSessionToTabs(tabs, activeTabId, fallback.id, mode)
 
     startTransition(() => {
       setSessions((currentSessions) => [...promoteSessions(currentSessions), fallback])
+      setTabs(nextTabs)
+      setActiveTabId(findTabByPaneId(nextTabs, fallback.id)?.id ?? tabIdForSession(fallback.id))
       setActiveSessionId(fallback.id)
     })
   }
@@ -252,9 +316,15 @@ function App() {
       return
     }
 
-    const currentIndex = sessions.findIndex((session) => session.id === sessionId)
-    const nextIndex = currentIndex <= 0 ? 1 : currentIndex - 1
-    const nextSession = sessions[nextIndex]
+    const nextTabs = removeSessionFromTabs(tabs, sessionId)
+    const nextActiveSessionId =
+      sessionId === activeSessionId
+        ? preferredActiveSessionId(nextTabs, activeTabId, sessions, sessionId)
+        : activeSessionId
+    const nextActiveTabId =
+      findTabByPaneId(nextTabs, nextActiveSessionId)?.id ??
+      nextTabs[0]?.id ??
+      activeTabId
 
     if (canConnect) {
       void fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
@@ -265,13 +335,47 @@ function App() {
     }
 
     startTransition(() => {
-      setSessions((currentSessions) =>
-        currentSessions.filter((session) => session.id !== sessionId),
-      )
+      setSessions((currentSessions) => currentSessions.filter((session) => session.id !== sessionId))
+      setTabs(nextTabs)
+      setActiveTabId(nextActiveTabId)
+      setActiveSessionId(nextActiveSessionId)
+    })
+  }
 
-      if (sessionId === activeSessionId) {
-        setActiveSessionId(nextSession.id)
+  async function closeTab(tabId: string) {
+    const targetTab = tabs.find((tab) => tab.id === tabId)
+
+    if (!targetTab || sessions.length <= targetTab.paneIds.length) {
+      return
+    }
+
+    if (targetTab.paneIds.length === 1) {
+      await closeSession(targetTab.paneIds[0])
+      return
+    }
+
+    if (canConnect) {
+      for (const paneId of targetTab.paneIds) {
+        void fetch(`/api/sessions/${encodeURIComponent(paneId)}`, {
+          method: 'DELETE',
+        }).catch(() => {
+          setRemoteReady(false)
+        })
       }
+    }
+
+    const paneIdSet = new Set(targetTab.paneIds)
+    const nextTabs = tabs.filter((tab) => tab.id !== tabId)
+    const nextActiveTab = nextTabs[0]
+    const nextActiveSessionId = nextActiveTab?.paneIds[0] ?? activeSessionId
+
+    startTransition(() => {
+      setSessions((currentSessions) =>
+        currentSessions.filter((session) => !paneIdSet.has(session.id)),
+      )
+      setTabs(nextTabs)
+      setActiveTabId(nextActiveTab?.id ?? activeTabId)
+      setActiveSessionId(nextActiveSessionId)
     })
   }
 
@@ -294,8 +398,10 @@ function App() {
     })
   }
 
-  function handleConnectionStateChange(nextState: ConnectionState) {
-    setConnectionState(nextState)
+  function handleConnectionStateChange(sessionId: string, nextState: ConnectionState) {
+    if (sessionId === activeSessionId) {
+      setConnectionState(nextState)
+    }
   }
 
   const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
@@ -329,7 +435,7 @@ function App() {
 
     if (matchesAction(event, actionBindings.closeTab)) {
       event.preventDefault()
-      void closeSession(activeSessionId)
+      void closeTab(activeTabId)
       return
     }
 
@@ -413,20 +519,43 @@ function App() {
       <section className="terminal-shell">
         <section className="viewport-stage" aria-label="Terminal workspace">
           <div className="terminal-stage">
-            <TerminalViewport
-              key={`${activeSession.id}-${canConnect ? 'live' : 'offline'}`}
-              active={!isSettingsOpen}
-              canConnect={canConnect}
-              cursorShape={activeProfile.cursorShape}
-              fallbackLines={activeSession.previewLines}
-              fontFamily={activeProfile.fontFace ?? 'Cascadia Mono'}
-              fontSize={activeProfile.fontSize ?? 13}
-              lineHeight={activeProfile.lineHeight ?? 1.22}
-              onConnectionStateChange={handleConnectionStateChange}
-              onTranscriptChange={handleTranscriptChange}
-              scheme={activeScheme}
-              sessionId={activeSession.id}
-            />
+            <div className={`workspace-grid workspace-grid-${currentTab.layout}`}>
+              {visiblePaneSessions.map((session) => {
+                const profile = resolveProfile(settings, session.profileId)
+                const scheme = resolveScheme(settings, profile, uiAppearance)
+                const isFocusedPane = session.id === activeSessionId && !isSettingsOpen
+
+                return (
+                  <section
+                    key={`${session.id}-${canConnect ? 'live' : 'offline'}`}
+                    className={`pane-shell ${isFocusedPane ? 'is-active' : ''}`}
+                    aria-label={`${sessionTitle(session, profile)} pane`}
+                    onMouseDown={() => activateSession(session.id)}
+                  >
+                    <div className="pane-frame" aria-hidden="true" />
+                    <div
+                      className={`pane-badge ${currentTab.paneIds.length > 1 ? 'is-visible' : ''}`}
+                    >
+                      <span>{profileBadge(profile)}</span>
+                      <small>{sessionTitle(session, profile)}</small>
+                    </div>
+                    <TerminalViewport
+                      active={isFocusedPane}
+                      canConnect={canConnect}
+                      cursorShape={profile.cursorShape}
+                      fallbackLines={session.previewLines}
+                      fontFamily={profile.fontFace ?? 'Cascadia Mono'}
+                      fontSize={profile.fontSize ?? 13}
+                      lineHeight={profile.lineHeight ?? 1.22}
+                      onConnectionStateChange={handleConnectionStateChange}
+                      onTranscriptChange={handleTranscriptChange}
+                      scheme={scheme}
+                      sessionId={session.id}
+                    />
+                  </section>
+                )
+              })}
+            </div>
 
             <button
               type="button"
@@ -438,12 +567,12 @@ function App() {
 
             <aside
               className={`settings-drawer ${isSettingsOpen ? 'is-open' : ''}`}
-              aria-label="Settings studio"
+              aria-label="Settings"
             >
               <div className="drawer-header">
                 <div>
-                  <span className="header-label">Windows Terminal subset</span>
-                  <strong>Profiles and theme</strong>
+                  <span className="header-label">Terminal settings</span>
+                  <strong>Profiles, themes, JSON</strong>
                   <p>{runtimeMessage}</p>
                 </div>
                 <div className="drawer-header-actions">
@@ -451,13 +580,7 @@ function App() {
                     {runtimeLabel}
                   </span>
                   <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
-                    {saveState === 'saving'
-                      ? 'saving'
-                      : saveState === 'saved'
-                        ? 'saved'
-                        : saveState === 'error'
-                          ? 'error'
-                          : 'idle'}
+                    {saveLabel}
                   </span>
                   <button
                     type="button"
@@ -471,9 +594,9 @@ function App() {
 
               <section className="drawer-overview" aria-label="Studio overview">
                 <article className="summary-card">
-                  <span className="header-label">Default profile</span>
+                  <span className="header-label">Default</span>
                   <strong>{defaultProfile.name}</strong>
-                  <span>{defaultProfile.commandline ?? 'Default shell'}</span>
+                  <span>{defaultProfile.commandline ?? 'default shell'}</span>
                 </article>
                 <article className="summary-card">
                   <span className="header-label">Theme</span>
@@ -481,16 +604,20 @@ function App() {
                   <span>{activeScheme.name}</span>
                 </article>
                 <article className="summary-card">
-                  <span className="header-label">Active session</span>
-                  <strong>{activeSessionLabel}</strong>
-                  <span>{activeSession.cwd}</span>
+                  <span className="header-label">Focused</span>
+                  <strong>{activeTabLabel}</strong>
+                  <span>
+                    {currentTab.paneIds.length > 1
+                      ? `${currentTab.paneIds.length} panes · ${activeSession.cwd}`
+                      : activeSession.cwd}
+                  </span>
                 </article>
               </section>
 
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Appearance</strong>
-                  <p>Apply WT `themes[]` to the rail accent and shell chrome without adding top UI.</p>
+                  <p>Keep the terminal dark, the rail bright, and the chrome flat like a native shell.</p>
                 </div>
 
                 <div className="theme-grid">
@@ -498,7 +625,7 @@ function App() {
                     const previewTheme = resolveUiTheme(
                       { ...settings, theme: theme.name },
                       activeProfile,
-                      appearance,
+                      uiAppearance,
                     )
 
                     return (
@@ -525,7 +652,7 @@ function App() {
               <section className="drawer-section">
                 <div className="section-heading">
                   <strong>Profiles</strong>
-                  <p>Launch a profile immediately or promote it to the WT-compatible default.</p>
+                  <p>Launch immediately or promote a profile to the WT-compatible default.</p>
                 </div>
 
                 <div className="profile-grid">
@@ -543,10 +670,12 @@ function App() {
                             <p>{profile.commandline ?? 'Default commandline'}</p>
                           </div>
                           <span className="profile-badge">
-                            {isDefault ? 'default' : profile.cursorShape ?? 'block'}
+                            {isDefault ? 'default' : profile.cursorShape ?? 'bar'}
                           </span>
                         </div>
-                        <span>{profile.startingDirectory ?? '~'}</span>
+                        <span>
+                          {profile.startingDirectory ?? '~'} · {profile.fontFace ?? 'Cascadia Mono'}
+                        </span>
 
                         <div className="profile-card-actions">
                           <button
@@ -574,10 +703,7 @@ function App() {
               <section className="drawer-section studio-editor">
                 <div className="section-heading">
                   <strong>settings.json</strong>
-                  <p>
-                    Supported subset: `defaultProfile`, `profiles`, `schemes`, `themes`, `actions`,
-                    `copyFormatting`
-                  </p>
+                  <p>Round-trip preserves unknown keys while the UI edits the supported Windows Terminal subset.</p>
                 </div>
 
                 <textarea
@@ -625,33 +751,47 @@ function App() {
           </div>
         </section>
 
-        <aside className="session-rail" aria-label="Session rail">
+        <aside
+          className="session-rail"
+          data-close-mode={closeButtonMode}
+          aria-label="Session rail"
+        >
           <div className="rail-head">
             <button
               type="button"
               className="rail-brand"
               onClick={() => setIsSettingsOpen((current) => !current)}
-              aria-label="Open settings studio"
+              aria-label="Open settings"
             >
-              WT
+              <span className="rail-brand-mark">WT</span>
+              <span className="rail-brand-copy">shell</span>
             </button>
-            <span className={`rail-connection is-${connectionState}`} aria-hidden="true" />
+            <div className="rail-status" aria-label="Runtime status">
+              <span className={`rail-connection is-${connectionState}`} aria-hidden="true" />
+              <span>{runtimeLabel}</span>
+            </div>
           </div>
 
           <div className="rail-caption" aria-label="Session count">
-            <strong>{sessions.length}</strong>
+            <strong>{tabs.length}</strong>
             <span>tabs</span>
           </div>
 
           <div className="rail-list" role="tablist" aria-label="Sessions">
-            {sessions.map((session) => {
-              const profile = resolveProfile(settings, session.profileId)
-              const tabLabel = sessionTitle(session, profile)
-              const isActive = session.id === activeSession.id
+            {tabs.map((tab) => {
+              const primarySession =
+                sessions.find((session) => session.id === tab.paneIds[0]) ?? activeSession
+              const profile = resolveProfile(settings, primarySession.profileId)
+              const tabLabel = tabLabelForTab(tab, sessions, settings)
+              const isActive = tab.id === currentTab.id
+              const tabMeta =
+                tab.paneIds.length > 1
+                  ? `${tab.paneIds.length} panes`
+                  : sessionLabel(primarySession, activeSession.id)
 
               return (
                 <div
-                  key={session.id}
+                  key={tab.id}
                   className={`rail-tab-shell ${isActive ? 'is-active' : ''}`}
                   style={{ '--rail-accent': profile.tabColor ?? uiTheme.accent } as CSSProperties}
                 >
@@ -661,25 +801,32 @@ function App() {
                     role="tab"
                     aria-selected={isActive}
                     aria-label={`${tabLabel} tab`}
-                    onClick={() => activateSession(session.id)}
+                    onClick={() => {
+                      setActiveTabId(tab.id)
+                      activateSession(tab.paneIds[0])
+                    }}
                   >
-                    <span className={`rail-tab-status rail-tab-status-${session.status}`} />
+                    <span
+                      className={`rail-tab-status rail-tab-status-${primarySession.status}`}
+                    />
                     <span className="rail-tab-icon">{profileBadge(profile)}</span>
                     <span className="rail-tab-copy">
                       <strong>{tabLabel}</strong>
                       <span>{profile.name}</span>
                     </span>
-                    <span className="rail-tab-meta">{sessionLabel(session, activeSession.id)}</span>
+                    <span className="rail-tab-meta">{tabMeta}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    className="rail-tab-close"
-                    onClick={() => void closeSession(session.id)}
-                    aria-label={`${tabLabel} 닫기`}
-                  >
-                    ×
-                  </button>
+                  {closeButtonMode !== 'never' ? (
+                    <button
+                      type="button"
+                      className="rail-tab-close"
+                      onClick={() => void closeTab(tab.id)}
+                      aria-label={`${tabLabel} 닫기`}
+                    >
+                      ×
+                    </button>
+                  ) : null}
                 </div>
               )
             })}
@@ -692,7 +839,28 @@ function App() {
               aria-label="New session"
               onClick={() => void createSession()}
             >
-              +
+              <span>+</span>
+              <small>new</small>
+            </button>
+            <button
+              type="button"
+              className="rail-action"
+              aria-label="Split vertically"
+              onClick={() => void createSession(activeProfile.id, 'vertical')}
+              disabled={!canSplitCurrentTab}
+            >
+              <span>sv</span>
+              <small>pane</small>
+            </button>
+            <button
+              type="button"
+              className="rail-action"
+              aria-label="Split horizontally"
+              onClick={() => void createSession(activeProfile.id, 'horizontal')}
+              disabled={!canSplitCurrentTab}
+            >
+              <span>sh</span>
+              <small>pane</small>
             </button>
             <button
               type="button"
@@ -700,7 +868,8 @@ function App() {
               aria-label="Open settings"
               onClick={() => setIsSettingsOpen((current) => !current)}
             >
-              cfg
+              <span>cfg</span>
+              <small>set</small>
             </button>
           </div>
         </aside>
@@ -944,6 +1113,153 @@ function normalizeSchemeSelection(value: unknown) {
 
 function normalizeStatus(value: unknown): SessionItem['status'] {
   return value === 'idle' || value === 'attention' ? value : 'running'
+}
+
+function tabIdForSession(sessionId: string) {
+  return `tab-${sessionId}`
+}
+
+function buildTabsFromSessions(sessions: SessionItem[]): WorkspaceTab[] {
+  if (sessions.length === 0) {
+    return []
+  }
+
+  return sessions.map((session) => ({
+    id: tabIdForSession(session.id),
+    paneIds: [session.id],
+    layout: 'single',
+  }))
+}
+
+function syncTabsWithSessions(tabs: WorkspaceTab[], sessions: SessionItem[]): WorkspaceTab[] {
+  const sessionIds = new Set(sessions.map((session) => session.id))
+  const nextTabs = tabs
+    .map((tab) => {
+      const paneIds = tab.paneIds.filter((paneId) => sessionIds.has(paneId))
+
+      if (paneIds.length === 0) {
+        return null
+      }
+
+      return {
+        ...tab,
+        paneIds,
+        layout: paneIds.length > 1 ? tab.layout : 'single',
+      }
+    })
+    .filter((tab): tab is WorkspaceTab => tab !== null)
+
+  const assignedPaneIds = new Set(nextTabs.flatMap((tab) => tab.paneIds))
+  const orphanSessions = sessions.filter((session) => !assignedPaneIds.has(session.id))
+
+  return [
+    ...nextTabs,
+    ...orphanSessions.map((session) => ({
+      id: tabIdForSession(session.id),
+      paneIds: [session.id],
+      layout: 'single' as const,
+    })),
+  ]
+}
+
+function findTabByPaneId(tabs: WorkspaceTab[], paneId: string) {
+  return tabs.find((tab) => tab.paneIds.includes(paneId))
+}
+
+function appendSessionToTabs(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  sessionId: string,
+  mode: PaneLayout,
+): WorkspaceTab[] {
+  if (mode === 'single' || tabs.length === 0) {
+    return [
+      ...tabs,
+      {
+        id: tabIdForSession(sessionId),
+        paneIds: [sessionId],
+        layout: 'single',
+      },
+    ]
+  }
+
+  const targetTab = tabs.find((tab) => tab.id === activeTabId)
+  if (!targetTab || targetTab.paneIds.length !== 1) {
+    return [
+      ...tabs,
+      {
+        id: tabIdForSession(sessionId),
+        paneIds: [sessionId],
+        layout: 'single',
+      },
+    ]
+  }
+
+  return tabs.map((tab) => {
+    if (tab.id !== activeTabId || tab.paneIds.includes(sessionId)) {
+      return tab
+    }
+
+    return {
+      ...tab,
+      layout: mode,
+      paneIds: [...tab.paneIds, sessionId],
+    }
+  })
+}
+
+function removeSessionFromTabs(tabs: WorkspaceTab[], sessionId: string): WorkspaceTab[] {
+  return tabs
+    .map((tab) => {
+      const paneIds = tab.paneIds.filter((paneId) => paneId !== sessionId)
+
+      if (paneIds.length === 0) {
+        return null
+      }
+
+      return {
+        ...tab,
+        paneIds,
+        layout: paneIds.length > 1 ? tab.layout : 'single',
+      }
+    })
+    .filter((tab): tab is WorkspaceTab => tab !== null)
+}
+
+function preferredActiveSessionId(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  sessions: SessionItem[],
+  removedSessionId: string,
+) {
+  const sameTab = tabs.find((tab) => tab.id === activeTabId)
+
+  if (sameTab?.paneIds[0]) {
+    return sameTab.paneIds[0]
+  }
+
+  if (tabs[0]?.paneIds[0]) {
+    return tabs[0].paneIds[0]
+  }
+
+  return sessions.find((session) => session.id !== removedSessionId)?.id ?? removedSessionId
+}
+
+function tabLabelForTab(
+  tab: WorkspaceTab,
+  sessions: SessionItem[],
+  settings: WindowsTerminalSettings,
+) {
+  const primarySession = sessions.find((session) => session.id === tab.paneIds[0])
+
+  if (!primarySession) {
+    return 'terminal'
+  }
+
+  const primaryProfile = resolveProfile(settings, primarySession.profileId)
+  const primaryLabel = sessionTitle(primarySession, primaryProfile)
+
+  return tab.paneIds.length > 1 ? `${primaryLabel} +${tab.paneIds.length - 1}` : primaryLabel
 }
 
 function createFallbackSession(

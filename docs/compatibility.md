@@ -57,6 +57,7 @@ Action fields currently mapped by the frontend:
 ## Runtime Behavior
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
+- `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - profile launch uses the WT `commandline` when possible

@@ -28,8 +28,7 @@ use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, nativ
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, BufReader},
-    process::{Child as TokioChild, Command as TokioCommand},
+    process::Command as TokioCommand,
     sync::{RwLock, broadcast},
 };
 use uuid::Uuid;
@@ -37,7 +36,8 @@ use uuid::Uuid;
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3001;
 const DEFAULT_SETTINGS_PATH: &str = "config/webpty.settings.json";
-const LOCALHOST_RUN_DESTINATION: &str = "nokey@localhost.run";
+const FUNNEL_PROXY_TARGET_HOST: &str = "127.0.0.1";
+const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
 #[derive(Clone)]
@@ -75,7 +75,9 @@ enum ParsedCli {
 }
 
 struct TunnelHandle {
-    child: TokioChild,
+    https_port: u16,
+    public_url: String,
+    managed_by_webpty: bool,
 }
 
 impl Default for UpOptions {
@@ -627,6 +629,10 @@ fn default_up_options() -> UpOptions {
     UpOptions::default()
 }
 
+fn supports_funnel_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "0.0.0.0" | "::" | "[::]" | "localhost")
+}
+
 fn root_usage() -> String {
     format!(
         "webpty {}\n\nUsage:\n  webpty [up] [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n  webpty up --help\n\nCommands:\n  up        Start the Rust PTY server and embedded web UI\n\nIf no command is provided, `webpty` defaults to `webpty up`.",
@@ -636,7 +642,7 @@ fn root_usage() -> String {
 
 fn up_usage() -> String {
     format!(
-        "webpty up\n\nUsage:\n  webpty up [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n\nOptions:\n  --host <host>         Bind address for the local server (default: {})\n  --port <port>         TCP port for the local server (default: {})\n  --settings <path>     WT-compatible settings file path\n  --funnel              Expose the local server through an SSH reverse tunnel\n  -h, --help            Print help\n  -V, --version         Print version",
+        "webpty up\n\nUsage:\n  webpty up [--host <host>] [--port <port>] [--settings <path>] [--funnel]\n\nOptions:\n  --host <host>         Bind address for the local server (default: {})\n  --port <port>         TCP port for the local server (default: {})\n  --settings <path>     WT-compatible settings file path\n  --funnel              Expose the local server through Tailscale Funnel\n  -h, --help            Print help\n  -V, --version         Print version",
         DEFAULT_HOST, DEFAULT_PORT
     )
 }
@@ -646,6 +652,14 @@ fn version_string() -> String {
 }
 
 async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
+    if options.funnel && !supports_funnel_host(&options.host) {
+        return Err(format!(
+            "`webpty up --funnel` requires `--host` to bind loopback or all interfaces; received `{}`",
+            options.host
+        )
+        .into());
+    }
+
     let settings_path = options.settings_path.clone();
     let settings = load_settings(&settings_path).unwrap_or_else(|error| {
         eprintln!(
@@ -703,103 +717,248 @@ async fn shutdown_signal() {
 }
 
 async fn start_funnel(port: u16) -> Result<TunnelHandle, Box<dyn std::error::Error>> {
-    let mut command = TokioCommand::new("ssh");
-    command
-        .arg("-o")
-        .arg("StrictHostKeyChecking=no")
-        .arg("-o")
-        .arg(format!("UserKnownHostsFile={}", null_device()))
-        .arg("-o")
-        .arg("ServerAliveInterval=30")
-        .arg("-o")
-        .arg("ExitOnForwardFailure=yes")
-        .arg("-T")
-        .arg("-N")
-        .arg("-R")
-        .arg(format!("80:127.0.0.1:{port}"))
-        .arg(LOCALHOST_RUN_DESTINATION)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    ensure_tailscale_ready().await?;
 
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("failed to start funnel via `ssh`: {error}"))?;
+    let target = format!("{FUNNEL_PROXY_TARGET_HOST}:{port}");
+    let selection = select_funnel_port(&target).await?;
+    let dns_name = tailscale_dns_name().await?;
+    let (https_port, managed_by_webpty) = match selection {
+        FunnelSelection::Existing(port) => (port, false),
+        FunnelSelection::New(port) => {
+            run_tailscale_command([
+                "funnel".to_string(),
+                "--yes".to_string(),
+                "--bg".to_string(),
+                format!("--https={port}"),
+                target.clone(),
+            ])
+            .await
+            .map_err(|error| format!("failed to start Tailscale Funnel: {error}"))?;
+            (port, true)
+        }
+    };
+    let public_url = resolve_funnel_url(https_port, &dns_name);
 
-    if let Some(stdout) = child.stdout.take() {
-        tokio::spawn(stream_funnel_output(stdout, false));
-    }
+    println!("webpty funnel available at {public_url}");
 
-    if let Some(stderr) = child.stderr.take() {
-        tokio::spawn(stream_funnel_output(stderr, true));
-    }
-
-    println!("webpty funnel starting via {}", LOCALHOST_RUN_DESTINATION);
-
-    Ok(TunnelHandle { child })
+    Ok(TunnelHandle {
+        https_port,
+        public_url,
+        managed_by_webpty,
+    })
 }
 
 async fn stop_tunnel(tunnel: &mut TunnelHandle) {
-    let _ = tunnel.child.start_kill();
-    let _ = tunnel.child.wait().await;
+    if !tunnel.managed_by_webpty {
+        println!(
+            "webpty funnel leaving existing Tailscale mapping intact at {}",
+            tunnel.public_url
+        );
+        return;
+    }
+
+    if let Err(error) = run_tailscale_command([
+        "funnel".to_string(),
+        format!("--https={}", tunnel.https_port),
+        "off".to_string(),
+    ])
+    .await
+    {
+        eprintln!("failed to stop Tailscale Funnel: {error}");
+    }
 }
 
-async fn stream_funnel_output<R>(reader: R, stderr: bool)
-where
-    R: AsyncRead + Unpin + Send + 'static,
-{
-    let mut lines = BufReader::new(reader).lines();
+async fn ensure_tailscale_ready() -> Result<(), Box<dyn std::error::Error>> {
+    let status = run_tailscale_json(["status", "--json"]).await?;
+    let backend_state = status
+        .get("BackendState")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default();
 
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
+    if backend_state != "Running" {
+        return Err(format!(
+            "tailscale is not ready (BackendState = `{backend_state}`); run `tailscale up` first"
+        )
+        .into());
+    }
 
-                if let Some(url) = extract_https_url(trimmed) {
-                    println!("webpty funnel available at {url}");
-                    continue;
-                }
+    let supports_funnel = status
+        .pointer("/Self/Capabilities")
+        .and_then(JsonValue::as_array)
+        .is_some_and(|capabilities| {
+            capabilities
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .any(|capability| capability == "funnel")
+        });
 
-                if stderr {
-                    eprintln!("funnel: {trimmed}");
-                } else {
-                    println!("funnel: {trimmed}");
-                }
-            }
-            Ok(None) | Err(_) => break,
+    if !supports_funnel {
+        return Err("this Tailscale node is missing Funnel capability".into());
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum FunnelSelection {
+    Existing(u16),
+    New(u16),
+}
+
+async fn select_funnel_port(target: &str) -> Result<FunnelSelection, Box<dyn std::error::Error>> {
+    let status = run_tailscale_json(["funnel", "status", "--json"]).await?;
+    let allowed_ports = allowed_funnel_ports().await?;
+
+    if let Some(port) = existing_funnel_port(&status, target) {
+        return Ok(FunnelSelection::Existing(port));
+    }
+
+    let used_ports = used_funnel_ports(&status);
+    allowed_ports
+        .iter()
+        .copied()
+        .find(|port| !used_ports.contains(port))
+        .map(FunnelSelection::New)
+        .ok_or_else(|| {
+            format!(
+                "all allowed Tailscale Funnel HTTPS ports are already in use: {:?}",
+                allowed_ports
+            )
+            .into()
+        })
+}
+
+async fn allowed_funnel_ports() -> Result<Vec<u16>, Box<dyn std::error::Error>> {
+    let status = run_tailscale_json(["status", "--json"]).await?;
+    let ports = status
+        .pointer("/Self/Capabilities")
+        .and_then(JsonValue::as_array)
+        .and_then(|capabilities| {
+            capabilities
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .find_map(|capability| {
+                    capability
+                        .split_once("ports=")
+                        .map(|(_, values)| {
+                            values
+                                .split(',')
+                                .filter_map(|value| value.parse::<u16>().ok())
+                                .collect::<Vec<_>>()
+                        })
+                        .filter(|ports| !ports.is_empty())
+                })
+        })
+        .unwrap_or_else(|| DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS.to_vec());
+
+    Ok(ports)
+}
+
+async fn tailscale_dns_name() -> Result<String, Box<dyn std::error::Error>> {
+    let status = run_tailscale_json(["status", "--json"]).await?;
+    let cert_domain = status
+        .get("CertDomains")
+        .and_then(JsonValue::as_array)
+        .and_then(|domains| domains.first())
+        .and_then(JsonValue::as_str)
+        .map(str::to_string);
+    let fallback = status
+        .pointer("/Self/DNSName")
+        .and_then(JsonValue::as_str)
+        .map(|value| value.trim_end_matches('.').to_string());
+
+    cert_domain
+        .or(fallback)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "tailscale did not report a public DNS name for this node".into())
+}
+
+async fn run_tailscale_json(
+    args: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<JsonValue, Box<dyn std::error::Error>> {
+    let output = run_tailscale_command(args).await?;
+    Ok(serde_json::from_str(&output)?)
+}
+
+async fn run_tailscale_command(
+    args: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let args = args.into_iter().map(Into::into).collect::<Vec<String>>();
+    let output = TokioCommand::new("tailscale")
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|error| format!("failed to execute `tailscale {}`: {error}", args.join(" ")))?;
+
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("process exited with status {}", output.status)
+    };
+
+    Err(format!("`tailscale {}` failed: {detail}", args.join(" ")).into())
+}
+
+fn existing_funnel_port(status: &JsonValue, target: &str) -> Option<u16> {
+    let web = status.get("Web")?.as_object()?;
+
+    for (host_port, config) in web {
+        let handlers = config.get("Handlers")?.as_object()?;
+        let root = handlers.get("/")?.as_object()?;
+        let proxy = root.get("Proxy")?.as_str()?;
+
+        if proxy != target {
+            continue;
+        }
+
+        let (_, port) = host_port.rsplit_once(':')?;
+        if let Ok(parsed) = port.parse::<u16>() {
+            return Some(parsed);
         }
     }
+
+    None
 }
 
-fn extract_https_url(line: &str) -> Option<String> {
-    if !line.contains("tunneled with") {
-        return None;
+fn used_funnel_ports(status: &JsonValue) -> Vec<u16> {
+    let mut ports = status
+        .get("Web")
+        .and_then(JsonValue::as_object)
+        .map(|entries| {
+            entries
+                .keys()
+                .filter_map(|host_port| host_port.rsplit_once(':'))
+                .filter_map(|(_, port)| port.parse::<u16>().ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if let Some(tcp_ports) = status.get("TCP").and_then(JsonValue::as_object) {
+        ports.extend(tcp_ports.keys().filter_map(|port| port.parse::<u16>().ok()));
     }
 
-    let start = line.find("https://")?;
-    let url = line[start..]
-        .chars()
-        .take_while(|character| !character.is_whitespace())
-        .collect::<String>();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
+}
 
-    if url.len() > "https://".len() {
-        Some(url.trim_end_matches([',', ')', ';']).to_string())
+fn resolve_funnel_url(https_port: u16, dns_name: &str) -> String {
+    if https_port == 443 {
+        format!("https://{dns_name}/")
     } else {
-        None
+        format!("https://{dns_name}:{https_port}/")
     }
-}
-
-#[cfg(windows)]
-fn null_device() -> &'static str {
-    "NUL"
-}
-
-#[cfg(not(windows))]
-fn null_device() -> &'static str {
-    "/dev/null"
 }
 
 async fn terminate_all_sessions(state: &AppState) {
@@ -858,7 +1017,7 @@ async fn health() -> Json<HealthResponse> {
             "sessions-create-delete",
             "websocket-live-pty",
             "pty-resize-input-output",
-            "funnel-ssh",
+            "tailscale-funnel",
         ],
     })
 }

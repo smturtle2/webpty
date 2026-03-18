@@ -13,7 +13,10 @@ interface TerminalViewportProps {
   lineHeight: number
   cursorShape: TerminalCursorShape | undefined
   scheme: WindowsTerminalColorScheme
-  onConnectionStateChange: (state: 'connecting' | 'live' | 'offline') => void
+  onConnectionStateChange: (
+    sessionId: string,
+    state: 'connecting' | 'live' | 'offline',
+  ) => void
   onTranscriptChange: (sessionId: string, transcript: string) => void
 }
 
@@ -38,8 +41,8 @@ export function TerminalViewport({
   const fallbackTranscriptRef = useRef(`${fallbackLines.join('\r\n')}\r\n`)
   const resizeTimerRef = useRef<number | null>(null)
 
-  const reportConnectionState = useEffectEvent((state: 'connecting' | 'live' | 'offline') => {
-    onConnectionStateChange(state)
+  const reportConnectionState = useEffectEvent((nextState: 'connecting' | 'live' | 'offline') => {
+    onConnectionStateChange(sessionId, nextState)
   })
 
   const reportTranscript = useEffectEvent((nextSessionId: string, transcript: string) => {
@@ -165,6 +168,14 @@ export function TerminalViewport({
     term.options.cursorStyle = mapCursorShape(cursorShape)
     scheduleSyncSize()
   }, [cursorShape, fontFamily, fontSize, lineHeight, scheme])
+
+  useEffect(() => {
+    if (!active) {
+      return
+    }
+
+    termRef.current?.focus()
+  }, [active])
 
   useEffect(() => {
     const term = termRef.current

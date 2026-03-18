@@ -82,6 +82,20 @@ export function resolveTheme(
   return settings.themes?.find((theme) => theme.name === selected) ?? null
 }
 
+export function resolveWindowAppearance(
+  settings: WindowsTerminalSettings,
+  systemAppearance: 'dark' | 'light',
+): 'dark' | 'light' {
+  const theme = resolveTheme(settings, systemAppearance)
+  const requested = theme?.window?.applicationTheme
+
+  if (requested === 'dark' || requested === 'light') {
+    return requested
+  }
+
+  return systemAppearance
+}
+
 export function resolveScheme(
   settings: WindowsTerminalSettings,
   profile: ResolvedProfile,
@@ -103,20 +117,17 @@ export function resolveUiTheme(
 ): UiThemeTokens {
   const selectedTheme = resolveTheme(settings, appearance)
   const scheme = resolveScheme(settings, profile, appearance)
-  const accent =
-    profile.tabColor ??
-    scheme.brightBlue ??
-    scheme.blue ??
-    '#4cc2ff'
-  const themeSeed =
-    selectedTheme?.tabRow?.background ??
-    selectedTheme?.tab?.background ??
+  const accent = profile.tabColor ?? scheme.brightBlue ?? scheme.blue ?? '#4cc2ff'
+  const tabActive = selectedTheme?.tab?.background ?? '#ffffff'
+  const tabInactive =
     selectedTheme?.tab?.unfocusedBackground ??
+    selectedTheme?.tabRow?.unfocusedBackground ??
     '#f3f3f3'
-  const chrome = mix(themeSeed, '#ffffff', 0.12)
-  const panel = mix(themeSeed, '#ffffff', 0.08)
-  const window = mix(scheme.background, '#000000', 0.92)
-  const surface = mix(scheme.background, '#000000', 0.86)
+  const tabStrip = selectedTheme?.tabRow?.background ?? '#efefef'
+  const chrome = tabStrip
+  const panel = mix(tabActive, '#f6f6f6', 0.58)
+  const window = mix(scheme.background, '#000000', 0.94)
+  const surface = mix(scheme.background, '#000000', 0.88)
 
   return {
     appBackground: '#000000',
@@ -128,19 +139,19 @@ export function resolveUiTheme(
     panel,
     terminalBackground: scheme.background,
     terminalForeground: scheme.foreground,
-    tabActive: '#ffffff',
-    tabInactive: '#ffffff',
-    tabStrip: chrome,
-    border: 'rgba(17, 17, 17, 0.12)',
-    borderStrong: 'rgba(17, 17, 17, 0.32)',
+    tabActive,
+    tabInactive,
+    tabStrip,
+    border: 'rgba(17, 17, 17, 0.11)',
+    borderStrong: 'rgba(17, 17, 17, 0.2)',
     text: '#111111',
-    textSoft: '#575757',
-    textMuted: '#8a8a8a',
+    textSoft: '#5f5f5f',
+    textMuted: '#7a7a7a',
     accent,
-    accentSoft: alpha(accent, 0.16),
+    accentSoft: alpha(accent, 0.14),
     signal: scheme.yellow ?? accent,
     success: scheme.green ?? '#6fd19d',
-    shadow: '0 18px 48px rgba(0, 0, 0, 0.24)',
+    shadow: '0 24px 64px rgba(0, 0, 0, 0.24)',
   }
 }
 
