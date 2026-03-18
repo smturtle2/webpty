@@ -57,6 +57,7 @@ Default path selection:
 - Linux: `~/.config/webpty/settings.json`
 - macOS: `~/Library/Application Support/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
+- last resort: `./settings.json` only when no user-scoped path can be resolved
 
 The repo sample stays opt-in through `webpty up --settings ./config/webpty.settings.json`.
 It is a fixed demo catalog for screenshots and manual QA, not the same thing as the
@@ -87,12 +88,14 @@ Creates a PTY-backed session.
 Accepted fields:
 
 - `profileId` or `profile_id`
+- optional `profile` payload for transient profile launches from the editor
 - `cwd`
 - `title`
 
 Notes:
 
 - requests targeting a `hidden: true` profile return `400`
+- transient profile launches are resolved against the request payload first, without persisting the draft into `settings.json`
 - runtime settings normalization keeps `defaultProfile` on a visible launchable profile
 - runtime settings normalization rejects payloads that hide every profile
 - if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`

@@ -36,57 +36,18 @@
 
 ## 현재 상태
 
-구현됨:
+현재 제공 범위:
 
-- Rust/Axum 서버 기반 PTY 세션 생성과 WebSocket 스트리밍
-- Rust 바이너리에서 직접 서빙되는 임베디드 프로덕션 UI
-- `webpty up` CLI 진입점
-- `webpty up --funnel` 외부 접속용 Tailscale Funnel
-- `webpty up --funnel`에서 지원되는 호스트 기준 자동 Tailscale 설치/부트스트랩과 로그인 URL 안내
-- 상단 툴바 없이 검은 터미널 스테이지가 중심인 레이아웃
-- show/hide 가능한 우측 세션 레일
-- 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 고정 설정 워크스페이스 탭, 액션 클러스터 없는 우측 레일
-- `themes[]`, `theme`, 프레임 색상, 셸 크롬을 바로 다루는 Theme Studio
-- `profiles.list[]`, 기본 프로필, 프롬프트, 폰트, 셸 필드를 바로 다루는 Profile Studio
-- 레지스트리 기반 UI 언어 선택을 다루는 `webpty.language` 기반 Language 섹션
-- Theme Studio / Profile Studio 초안 동기화에서 재귀 렌더 루프 콘솔 오류가 나지 않도록 한 안정화
-- profile/theme 항목 생성·복제·삭제용 인앱 UI
-- 탭, 프레임, 셸, 커서, 선택 영역 색상을 위한 인앱 color picker
-- Theme Studio / Profile Studio의 색상 값 입력창이 잘리지 않도록 전체 값을 그대로 보여주는 편집 UI
-- `accent`, `terminalBackground` 같은 공용 테마 토큰을 바로 넣는 shortcut chip
-- 프롬프트, 탭 강조색, 셸 색을 즉시 확인할 수 있는 프로필 미리보기
-- `{cwd}`, `{user}`, `{host}`, `{profile}`, `{symbol}` 토큰을 쓰는 선택적 `webpty.prompt` 템플릿
-- 숨김 프로필이 실수로 시작 프로필이 되지 않도록 하는 startup-profile guard
-- 호환 가능한 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
-- 디스크 기준 JSONC 스타일 설정 파일 로딩
-- 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
-- `{ "command": { "action": "newTab" } }` 같은 문자열/객체형 액션 바인딩 지원
-- Profile Studio와 Theme Studio 미리보기에서 런타임과 같은 프로필별 프롬프트 규칙 반영
-- Theme/Profile Studio 프롬프트 미리보기에서 템플릿의 공백을 그대로 보존
-- 프롬프트 템플릿의 `{profile}` 토큰이 런타임 셸과 같은 sanitize 규칙으로 미리보기됨
-- 비Windows 셸 실행과 fallback 모두에서 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
-- 기본 Bash/Zsh/Fish 프로필이 같은 host 토큰으로 수렴하지 않고 각 프로필 이름이 드러나는 프롬프트
-- fish 프로필 실행 시 선택된 프로필과 맞는 프롬프트를 강제하는 fish-native 프롬프트 오버라이드
-- 기본 zsh 호스트 셸도 clean interactive 경로로 실행되어 macOS 기본 셸 환경에서 프로필 프롬프트가 바로 덮이지 않음
-- 첫 실행 시 생성되는 기본 설정이 실행 OS를 따라가도록 한 host-scoped profile/settings 생성
-- macOS의 `~/Library/Application Support/webpty/settings.json`을 포함한 host-native 설정 경로
-- 기본 설정, 데모 데이터, 레포 샘플에서 외부 `$schema` URL 하드코딩을 제거했고, 사용자가 넣은 `$schema` 값은 그대로 round-trip됨
-- Runtime host metadata를 이용해 Profile Studio의 command/start directory 힌트가 실행 OS에 맞춰짐
-- 사용자 전역 설정이 기본 우선순위를 가지며, 레포 샘플 설정은 `--settings`로만 opt-in
-- bracketed-paste 같은 제어 시퀀스가 요약 라인에 새지 않도록 하는 session preview sanitizing
-- `padding`, 명시적 `lineHeight`, `window.useMica`가 실제 뷰포트와 셸 크롬에 반영됨
-- 반복 fit 패스를 통해 좁은 폭과 모바일에서도 xterm 행이 화면 밖으로 밀려나지 않음
-- 파일 경로가 세션 작업 디렉터리가 되지 않도록 하는 stricter cwd 검증
-- 시작/종료 시 Funnel 정리 경로와 capability 판별 보강
-- 활성 탭 안에서 수직/수평 split 생성
-- 떠다니는 배지 없이 더 절제된 split separator와 active pane framing
-- PTY 입력, 리사이즈, 출력 스트림 처리
-- 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 워크스페이스에 렌더링
-- 프런트 빌드 후 Rust 임베디드 UI가 새 자산을 다시 포함하도록 하는 재빌드 추적
-- 안전한 collapsed bounds, 더 얇아진 밀도, 더 넓은 텍스트 overflow 보호를 가진 icon-first 우측 레일
-- Profile Studio / Theme Studio의 helper 문구가 label 스타일 대문자로 잘못 렌더링되지 않도록 수정
-- `npm run docs:shots`로 재현 가능한 문서 스크린샷 갱신
-- 레포 샘플 설정 기준으로 다시 캡처한 최신 문서 스크린샷
+- Rust PTY 런타임, 임베디드 프로덕션 UI, `webpty up` 원커맨드 실행
+- 얇은 우측 레일, 전용 설정 탭, 검은 터미널 중심 레이아웃, 활성 탭 내부 split pane
+- Theme Studio, Profile Studio, Language, JSON, Shortcut 편집 화면
+- Bash, Zsh, Fish, PowerShell, WSL 계열을 포함한 프로필 인식 프롬프트 셰이핑
+- 실행 OS를 따르는 첫 실행 기본값과 OS별 설정 경로
+- 프로필/테마/스킴/액션 호환 설정, JSONC 주석, trailing comma, 미지원 키 round-trip
+- 크롬/셸 색상용 color picker와 직접 입력 편집
+- 프롬프트 템플릿, 폰트 페이스, 폰트 크기, 폰트 굵기, 셀 높이, 줄 높이, 패딩, 셸 색상을 다루는 실시간 프로필 편집
+- 저장 전 Profile Studio 초안도 바로 실행해볼 수 있는 transient draft launch
+- 지원 호스트에서 Tailscale 부트스트랩까지 연결되는 `webpty up --funnel`
 
 알려진 공백:
 
@@ -109,7 +70,7 @@
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
-현재 워크스페이스 구조에서도 위 명령으로 레포 루트에서 바로 글로벌 설치가 되는 것을 다시 확인했습니다.
+현재 워크스페이스 구조에서 레포 루트 기준 글로벌 설치가 가능합니다.
 
 설치 뒤 `webpty`가 보이지 않으면 Cargo bin 디렉터리
 (`$HOME/.cargo/bin`)를 `PATH`에 추가하세요.
@@ -159,6 +120,7 @@ webpty up --funnel
 1. `webpty up --settings <path>`
 2. `WEBPTY_SETTINGS_PATH=<path>`
 3. 사용자 전역 경로
+4. 사용자 전역 경로를 전혀 만들 수 없을 때만 로컬 `./settings.json`
 
 레포 샘플 설정은 다음처럼 명시적으로 지정할 때만 사용됩니다:
 

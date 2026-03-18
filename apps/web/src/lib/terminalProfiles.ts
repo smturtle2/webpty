@@ -201,8 +201,14 @@ export function resolveProfileFontSize(profile: ResolvedProfile | TerminalProfil
   return profile.font?.size ?? profile.fontSize ?? 13
 }
 
+export function resolveProfileFontWeight(
+  profile: ResolvedProfile | TerminalProfile,
+): number | string {
+  return profile.font?.weight ?? profile.fontWeight ?? 'normal'
+}
+
 export function resolveProfileLineHeight(profile: ResolvedProfile | TerminalProfile): number {
-  return profile.lineHeight ?? profile.font?.cellHeight ?? 1.22
+  return profile.lineHeight ?? profile.cellHeight ?? profile.font?.cellHeight ?? 1.22
 }
 
 export function resolveProfilePadding(

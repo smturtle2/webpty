@@ -40,57 +40,18 @@ and disk loading now accepts JSONC-style comments and trailing commas.
 
 ## Current Status
 
-Implemented:
+Shipped:
 
-- live PTY-backed sessions from a Rust/Axum server
-- embedded production UI served directly by the Rust binary
-- `webpty up` CLI entrypoint for local startup
-- `webpty up --funnel` external access through Tailscale Funnel
-- automatic Tailscale install/bootstrap for `webpty up --funnel` on supported hosts, with login URL handoff when interactive auth is still required
-- black terminal stage with no top toolbar
-- narrow right-side rail with show/hide support
-- tighter Windows 11-aligned rail density with white flat tab surfaces, a pinned settings workspace tab, and no persistent rail action cluster
-- dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
-- dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
-- dedicated Language section backed by `webpty.language` for registry-backed UI copy selection
-- stable Theme Studio / Profile Studio draft syncing with no recursive render-loop console errors
-- in-app create / duplicate / delete flows for profile and theme entries
-- in-app color pickers for tab, frame, shell, cursor, and selection colors
-- full color value editing in Theme Studio and Profile Studio so hex fields stay readable instead of collapsing to a clipped prefix
-- token shortcut chips for shared theme color values such as `accent` and `terminalBackground`
-- live profile preview surface for prompt, tab accent, and shell color verification
-- optional `webpty.prompt` templates with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
-- launchable startup-profile guards so hidden profiles cannot become the default shell accidentally
-- compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
-- JSONC-style settings file loading on disk
-- JSONC-style editing in the in-app `settings.json` panel
-- string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
-- runtime-matched profile prompt previews in Profile Studio and theme previews
-- literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
-- prompt-template previews now sanitize `{profile}` with the same rules as the runtime shell path
-- per-profile prompt shaping on non-Windows shell launches and fallbacks so sessions do not collapse to `bash-5.2$`
-- seeded Bash, Zsh, and Fish profiles now keep visibly distinct prompt labels instead of collapsing onto the same host token
-- fish profile launches now install a fish-native prompt override so the runtime prompt matches the selected profile
-- default zsh host launches now use a clean interactive path so macOS-style defaults do not override profile-shaped prompts immediately
-- host-scoped default settings generation so first-run profiles follow the runtime OS instead of shipping Windows-only launch commands everywhere
-- host-native default settings paths, including `~/Library/Application Support/webpty/settings.json` on macOS
-- seeded defaults, demo data, and the repo sample no longer hardcode a third-party `$schema` URL, while custom `$schema` values still round-trip untouched
-- runtime host metadata now feeds host-aware command and directory hints inside Profile Studio
-- user-scoped settings now win by default, while the repo sample stays opt-in through `--settings`
-- sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
-- real viewport application for `padding`, explicit `lineHeight`, and `window.useMica`
-- repeated terminal fit passes so narrow and mobile viewports stop rendering xterm rows off-canvas
-- stricter launch cwd validation so file paths do not become session working directories
-- safer Funnel cleanup and broader capability detection during startup and shutdown
-- vertical and horizontal split creation inside the active tab
-- subtler split-pane separators and active-pane framing without floating badge overlays
-- WebSocket input/output streaming and PTY resize handling
-- browser-safe profile icon sources rendered in the rail and settings workspace
-- embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
-- icon-first right rail with safe collapsed bounds, tighter density, and broader text-overflow protection
-- helper copy in Profile Studio and Theme Studio now keeps sentence casing instead of inheriting label-style uppercase treatment
-- reproducible screenshot refresh through `npm run docs:shots`
-- refreshed repository screenshots captured from the sample settings catalog for stable docs output
+- Rust PTY runtime, embedded production UI, and one-command startup with `webpty up`
+- thin right rail, dedicated settings tab, black terminal-first layout, and split panes inside the active tab
+- Theme Studio, Profile Studio, Language, JSON, and Shortcut surfaces in the shipped UI
+- profile-aware prompt shaping on non-Windows hosts, including Bash, Zsh, Fish, PowerShell, and WSL-shaped launches
+- host-aware first-run defaults and host-native settings paths
+- settings compatibility for profiles, themes, schemes, actions, JSONC comments, trailing commas, and unknown-key round-trips
+- color pickers plus direct editing for chrome and shell colors
+- live profile controls for prompt template, font face, font size, font weight, cell height, line height, padding, and shell colors
+- transient draft launches from Profile Studio, so unsaved profile edits can be opened directly for preview
+- `webpty up --funnel` with Tailscale bootstrap and auth-key handoff on supported hosts
 
 Known gaps:
 
@@ -113,7 +74,7 @@ Known gaps:
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
-The workspace layout is installable directly from the repository root; the command above was revalidated against the current tree.
+The workspace layout is installable directly from the repository root.
 
 If `webpty` is not found after install, add Cargo's bin directory to `PATH`
 (`$HOME/.cargo/bin` on Linux/macOS).
@@ -163,6 +124,7 @@ Resolution order:
 1. `webpty up --settings <path>`
 2. `WEBPTY_SETTINGS_PATH=<path>`
 3. user-scoped platform path
+4. local `./settings.json` only when no user-scoped path can be resolved
 
 The repository sample settings file stays opt-in through:
 

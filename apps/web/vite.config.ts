@@ -7,6 +7,33 @@ export default defineConfig({
   build: {
     outDir: '../server/ui',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+
+          if (id.includes('@xterm/')) {
+            return 'xterm'
+          }
+
+          if (
+            id.includes('/react/') ||
+            id.includes('/react-dom/') ||
+            id.includes('/scheduler/')
+          ) {
+            return 'react-vendor'
+          }
+
+          if (id.includes('/json5/')) {
+            return 'json5'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
   },
   server: {
     port: 5173,

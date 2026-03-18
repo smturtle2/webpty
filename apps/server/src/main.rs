@@ -7,6 +7,8 @@ use std::{
     sync::{Arc, Mutex, RwLock as StdRwLock},
     thread,
 };
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use axum::{
     Json, Router,
@@ -37,7 +39,6 @@ use uuid::Uuid;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3001;
-const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
 const DEFAULT_TAILSCALE_UP_TIMEOUT: &str = "30s";
@@ -322,6 +323,8 @@ struct HealthResponse {
 struct CreateSessionRequest {
     #[serde(default, alias = "profile_id", alias = "profileId")]
     profile_id: Option<String>,
+    #[serde(default)]
+    profile: Option<TerminalProfile>,
     #[serde(default)]
     cwd: Option<String>,
     #[serde(default)]
@@ -1546,21 +1549,54 @@ async fn create_session(
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
     let settings = state.settings.read().await.clone();
-    let profile_id = if let Some(requested) = payload.profile_id.as_deref() {
-        resolve_requested_profile_id(&settings, Some(requested)).ok_or((
-            StatusCode::BAD_REQUEST,
-            format!("profile `{requested}` is not defined in settings"),
-        ))?
+    let CreateSessionRequest {
+        profile_id: requested_profile_id,
+        profile,
+        cwd,
+        title,
+    } = payload;
+    let (session_settings, profile_id, profile) = if let Some(profile_override) = profile {
+        let effective_profile_id = profile_key(&profile_override);
+        let mut session_settings = settings.clone();
+        let mut replaced = false;
+
+        for existing in &mut session_settings.profiles.list {
+            if profile_matches(existing, &effective_profile_id)
+                || requested_profile_id
+                    .as_deref()
+                    .is_some_and(|requested| profile_matches(existing, requested))
+            {
+                *existing = profile_override.clone();
+                replaced = true;
+                break;
+            }
+        }
+
+        if !replaced {
+            session_settings.profiles.list.push(profile_override.clone());
+        }
+
+        (session_settings, effective_profile_id, profile_override)
     } else {
-        default_launch_profile_id(&settings).ok_or((
+        let profile_id = if let Some(requested) = requested_profile_id.as_deref() {
+            resolve_requested_profile_id(&settings, Some(requested)).ok_or((
+                StatusCode::BAD_REQUEST,
+                format!("profile `{requested}` is not defined in settings"),
+            ))?
+        } else {
+            default_launch_profile_id(&settings).ok_or((
+                StatusCode::BAD_REQUEST,
+                "no launchable profile available".to_string(),
+            ))?
+        };
+        let profile = resolve_profile(&settings, &profile_id).cloned().ok_or((
             StatusCode::BAD_REQUEST,
-            "no launchable profile available".to_string(),
-        ))?
+            format!("profile `{profile_id}` is not defined in settings"),
+        ))?;
+
+        (settings.clone(), profile_id, profile)
     };
-    let profile = resolve_profile(&settings, &profile_id).cloned().ok_or((
-        StatusCode::BAD_REQUEST,
-        format!("profile `{profile_id}` is not defined in settings"),
-    ))?;
+
     if profile.hidden.unwrap_or(false) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -1570,9 +1606,7 @@ async fn create_session(
             ),
         ));
     }
-    let title = payload
-        .title
-        .unwrap_or_else(|| default_session_title(&profile));
+    let title = title.unwrap_or_else(|| default_session_title(&profile));
     let sort_index = {
         let sessions = state.sessions.read().await;
         sessions
@@ -1584,11 +1618,11 @@ async fn create_session(
     };
 
     let session = spawn_session(
-        &settings,
+        &session_settings,
         format!("session-{}", Uuid::new_v4().simple()),
         title.clone(),
         profile_id.clone(),
-        payload.cwd,
+        cwd,
         sort_index,
     )
     .map_err(|message| (StatusCode::INTERNAL_SERVER_ERROR, message))?;
@@ -1755,7 +1789,7 @@ fn default_settings_path() -> PathBuf {
         return path;
     }
 
-    PathBuf::from(FALLBACK_SETTINGS_PATH)
+    PathBuf::from(DEFAULT_SETTINGS_FILENAME)
 }
 
 fn user_settings_path() -> Option<PathBuf> {
@@ -2934,9 +2968,27 @@ fn first_available_program(candidates: &[&str]) -> Option<String> {
     candidates.iter().find_map(|candidate| {
         env::split_paths(&paths)
             .map(|path| path.join(candidate))
-            .find(|path| path.exists())
+            .find(|path| is_executable_path(path))
             .map(|_| (*candidate).to_string())
     })
+}
+
+fn is_executable_path(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn spawn_pty(plan: &mut LaunchPlan) -> Result<SpawnedPty, String> {
@@ -4257,6 +4309,39 @@ mod tests {
         }
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn default_settings_path_falls_back_to_local_settings_file_when_user_scope_is_unavailable() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_override = env::var_os("WEBPTY_SETTINGS_PATH");
+        let original_xdg = env::var_os("XDG_CONFIG_HOME");
+        let original_home = env::var_os("HOME");
+
+        unsafe {
+            env::remove_var("WEBPTY_SETTINGS_PATH");
+            env::remove_var("XDG_CONFIG_HOME");
+            env::remove_var("HOME");
+        }
+
+        assert_eq!(default_settings_path(), PathBuf::from(DEFAULT_SETTINGS_FILENAME));
+
+        match original_override {
+            Some(value) => unsafe { env::set_var("WEBPTY_SETTINGS_PATH", value) },
+            None => unsafe { env::remove_var("WEBPTY_SETTINGS_PATH") },
+        }
+
+        match original_xdg {
+            Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
+            None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
+        }
+
+        match original_home {
+            Some(value) => unsafe { env::set_var("HOME", value) },
+            None => unsafe { env::remove_var("HOME") },
+        }
+    }
+
     #[cfg(not(any(windows, target_os = "macos")))]
     #[test]
     fn user_settings_path_uses_xdg_config_home() {
@@ -4305,6 +4390,54 @@ mod tests {
             Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
             None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn first_available_program_ignores_non_executable_candidates() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let sandbox = env::temp_dir().join(format!("webpty-path-{}", Uuid::new_v4()));
+        let bin_a = sandbox.join("bin-a");
+        let bin_b = sandbox.join("bin-b");
+        fs::create_dir_all(&bin_a).expect("first bin dir should exist");
+        fs::create_dir_all(&bin_b).expect("second bin dir should exist");
+
+        let blocked = bin_a.join("demo");
+        let allowed = bin_b.join("demo");
+        fs::write(&blocked, "#!/bin/sh\nexit 0\n").expect("blocked file should exist");
+        fs::write(&allowed, "#!/bin/sh\nexit 0\n").expect("allowed file should exist");
+
+        let mut blocked_permissions = fs::metadata(&blocked)
+            .expect("blocked metadata should exist")
+            .permissions();
+        blocked_permissions.set_mode(0o644);
+        fs::set_permissions(&blocked, blocked_permissions)
+            .expect("blocked permissions should be updated");
+
+        let mut allowed_permissions = fs::metadata(&allowed)
+            .expect("allowed metadata should exist")
+            .permissions();
+        allowed_permissions.set_mode(0o755);
+        fs::set_permissions(&allowed, allowed_permissions)
+            .expect("allowed permissions should be updated");
+
+        let original_path = env::var_os("PATH");
+        unsafe {
+            env::set_var(
+                "PATH",
+                env::join_paths([&bin_a, &bin_b]).expect("PATH should join"),
+            );
+        }
+
+        assert_eq!(first_available_program(&["demo"]), Some("demo".to_string()));
+
+        match original_path {
+            Some(value) => unsafe { env::set_var("PATH", value) },
+            None => unsafe { env::remove_var("PATH") },
+        }
+
+        let _ = fs::remove_dir_all(&sandbox);
     }
 
     #[test]

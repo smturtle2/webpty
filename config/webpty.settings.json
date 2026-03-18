@@ -1,3 +1,6 @@
+// Demo catalog for screenshots and manual QA.
+// This file is opt-in through `webpty up --settings ./config/webpty.settings.json`.
+// First-run defaults still come from the runtime host.
 {
   "defaultProfile": "{e8b9f7d8-9f74-4a65-9f6d-43ba3ee24411}",
   "copyFormatting": "all",

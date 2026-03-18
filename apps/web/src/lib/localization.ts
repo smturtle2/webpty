@@ -78,7 +78,10 @@ export interface AppCopy {
   colorScheme: string
   fontFace: string
   fontSize: string
+  fontWeight: string
   lineHeight: string
+  cellHeight: string
+  padding: string
   cursorShape: string
   opacity: string
   shellBackground: string
@@ -306,7 +309,10 @@ const ENGLISH: AppCopy = {
   colorScheme: 'Color scheme',
   fontFace: 'Font face',
   fontSize: 'Font size',
+  fontWeight: 'Font weight',
   lineHeight: 'Line height',
+  cellHeight: 'Cell height',
+  padding: 'Padding',
   cursorShape: 'Cursor shape',
   opacity: 'Opacity',
   shellBackground: 'Shell background',
@@ -461,7 +467,10 @@ const KOREAN: AppCopy = {
   colorScheme: '색상 스킴',
   fontFace: '폰트 페이스',
   fontSize: '폰트 크기',
+  fontWeight: '폰트 굵기',
   lineHeight: '줄 높이',
+  cellHeight: '셀 높이',
+  padding: '패딩',
   cursorShape: '커서 모양',
   opacity: '투명도',
   shellBackground: '셸 배경',

@@ -29,6 +29,7 @@ import {
   resolveColorReference,
   resolveProfileFontFace,
   resolveProfileFontSize,
+  resolveProfileFontWeight,
   resolveProfileLineHeight,
   resolveProfilePadding,
   resolveProfile,
@@ -110,6 +111,9 @@ function App() {
     cloneSettingsDocument(demoSettings),
   )
   const [sessions, setSessions] = useState<SessionItem[]>(demoSessions)
+  const [sessionProfileOverrides, setSessionProfileOverrides] = useState<
+    Record<string, TerminalProfile>
+  >({})
   const [tabs, setTabs] = useState<WorkspaceTab[]>(() => buildTabsFromSessions(demoSessions))
   const [activeTabId, setActiveTabId] = useState(() => buildTabsFromSessions(demoSessions)[0].id)
   const [activeSessionId, setActiveSessionId] = useState(demoSessions[0].id)
@@ -164,7 +168,7 @@ function App() {
     sessions[0] ??
     demoSessions[0]
   const uiAppearance = resolveWindowAppearance(settings, systemAppearance)
-  const activeProfile = resolveProfile(settings, activeSession.profileId)
+  const activeProfile = resolveSessionProfile(settings, activeSession, sessionProfileOverrides)
   const defaultProfile = resolveProfile(settings, settings.defaultProfile)
   const activeScheme = resolveScheme(settings, activeProfile, uiAppearance)
   const activeTheme = resolveTheme(settings, uiAppearance)
@@ -181,7 +185,7 @@ function App() {
   const activeTabLabel =
     activeWorkspace === 'settings'
       ? copy.settingsWorkspace
-      : tabLabelForTab(currentTab, sessions, settings)
+      : tabLabelForTab(currentTab, sessions, settings, sessionProfileOverrides)
   const activeWorkspaceId =
     activeWorkspace === 'settings' ? SETTINGS_WORKSPACE_ID : currentTab.id
   const profileCatalog = settings.profiles.list.map((profile) =>
@@ -369,6 +373,22 @@ function App() {
   }, [activeSessionId, activeTabId, sessions, tabs])
 
   useEffect(() => {
+    const sessionIdSet = new Set(sessions.map((session) => session.id))
+
+    setSessionProfileOverrides((current) => {
+      const nextEntries = Object.entries(current).filter(([sessionId]) =>
+        sessionIdSet.has(sessionId),
+      )
+
+      if (nextEntries.length === Object.keys(current).length) {
+        return current
+      }
+
+      return Object.fromEntries(nextEntries)
+    })
+  }, [sessions])
+
+  useEffect(() => {
     if (settings.profiles.list.length === 0) {
       return
     }
@@ -483,8 +503,16 @@ function App() {
     void closeTab(activeTabId)
   }
 
-  async function createSession(profileId = activeProfile.id, mode: PaneLayout = 'single') {
-    const targetProfile = resolveProfile(settings, profileId)
+  async function createSession(
+    profileId = activeProfile.id,
+    mode: PaneLayout = 'single',
+    profileOverride?: TerminalProfile,
+  ) {
+    const sessionSettings = profileOverride
+      ? applyProfileOverrideToSettings(settings, profileId, profileOverride)
+      : settings
+    const launchProfileId = profileOverride ? profileIdentifier(profileOverride) : profileId
+    const targetProfile = resolveProfile(sessionSettings, launchProfileId)
     const nextCwd = targetProfile.startingDirectory ?? activeSession.cwd
 
     if (canConnect) {
@@ -497,6 +525,9 @@ function App() {
           body: JSON.stringify({
             profileId,
             cwd: nextCwd,
+            profile: profileOverride
+              ? serializeProfileRecord({}, profileOverride)
+              : undefined,
           }),
         })
         const created = normalizeCreatedSession(payload)
@@ -506,6 +537,9 @@ function App() {
           startTransition(() => {
             setActiveWorkspace('terminal')
             setSessions((currentSessions) => [...promoteSessions(currentSessions), created])
+            setSessionProfileOverrides((current) =>
+              profileOverride ? { ...current, [created.id]: profileOverride } : current,
+            )
             setTabs(nextTabs)
             setActiveTabId(findTabByPaneId(nextTabs, created.id)?.id ?? tabIdForSession(created.id))
             setActiveSessionId(created.id)
@@ -517,12 +551,20 @@ function App() {
       }
     }
 
-    const fallback = createFallbackSession(profileId, nextCwd, settings, nextSessionIdRef)
+    const fallback = createFallbackSession(
+      launchProfileId,
+      nextCwd,
+      sessionSettings,
+      nextSessionIdRef,
+    )
     const nextTabs = appendSessionToTabs(tabs, activeTabId, fallback.id, mode)
 
     startTransition(() => {
       setActiveWorkspace('terminal')
       setSessions((currentSessions) => [...promoteSessions(currentSessions), fallback])
+      setSessionProfileOverrides((current) =>
+        profileOverride ? { ...current, [fallback.id]: profileOverride } : current,
+      )
       setTabs(nextTabs)
       setActiveTabId(findTabByPaneId(nextTabs, fallback.id)?.id ?? tabIdForSession(fallback.id))
       setActiveSessionId(fallback.id)
@@ -951,7 +993,7 @@ function App() {
   const terminalWorkspace = (
     <div className={`workspace-grid workspace-grid-${currentTab.layout}`}>
       {visiblePaneSessions.map((session) => {
-        const profile = resolveProfile(settings, session.profileId)
+        const profile = resolveSessionProfile(settings, session, sessionProfileOverrides)
         const scheme = resolveScheme(settings, profile, uiAppearance)
         const viewportScheme = {
           ...scheme,
@@ -980,6 +1022,7 @@ function App() {
               fallbackLines={session.previewLines}
               fontFamily={resolveProfileFontFace(profile)}
               fontSize={resolveProfileFontSize(profile)}
+              fontWeight={resolveProfileFontWeight(profile)}
               lineHeight={resolveProfileLineHeight(profile)}
               padding={resolveProfilePadding(profile)}
               onConnectionStateChange={handleConnectionStateChange}
@@ -1069,24 +1112,6 @@ function App() {
                 </div>
               </div>
 
-              <section className="drawer-overview" aria-label={copy.sections.appearance.label}>
-                <article className="summary-card">
-                  <span className="header-label">{copy.applied}</span>
-                  <strong>{themeName}</strong>
-                  <span>{uiAppearance} {copy.activeAppearanceSuffix}</span>
-                </article>
-                <article className="summary-card">
-                  <span className="header-label">{copy.row}</span>
-                  <strong>{activeTheme?.tabRow?.background ?? '#efefef'}</strong>
-                  <span>{copy.tabStripLabel}</span>
-                </article>
-                <article className="summary-card">
-                  <span className="header-label">{copy.surface}</span>
-                  <strong>{activeTheme?.tab?.background ?? '#ffffff'}</strong>
-                  <span>{activeScheme.name}</span>
-                </article>
-              </section>
-
               <section className="drawer-section studio-layout">
                 <div className="studio-list" aria-label={copy.themeStudioTitle}>
                   {themeCatalog.map((theme) => {
@@ -1164,27 +1189,6 @@ function App() {
                               'npm run build',
                             )}
                           </span>
-                        </div>
-                        <div
-                          className="theme-preview-settings-card"
-                          style={{
-                            background: resolveColorReference(
-                              themeDraft.tab?.background,
-                              activeColorPalette,
-                              '#ffffff',
-                            ),
-                            borderColor: resolveColorReference(
-                              themeDraft.window?.unfocusedFrame,
-                              activeColorPalette,
-                              '#cfcfcf',
-                            ),
-                          }}
-                        >
-                          <span className="theme-preview-panel-label">
-                            {copy.themeStudioTitle}
-                          </span>
-                          <strong>{themeDraft.name}</strong>
-                          <span>{copy.themeFieldsDescription}</span>
                         </div>
                       </div>
                       <div
@@ -1665,6 +1669,20 @@ function App() {
                     </label>
 
                     <label className="field-row">
+                      <span>{copy.fontWeight}</span>
+                      <input
+                        className="field-input"
+                        value={String(resolveProfileFontWeight(profileDraft))}
+                        placeholder="normal"
+                        onChange={(event) =>
+                          patchProfileFont({
+                            weight: readOptionalNumberOrString(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
                       <span>{copy.lineHeight}</span>
                       <input
                         type="number"
@@ -1674,6 +1692,21 @@ function App() {
                         onChange={(event) =>
                           patchProfileDraft({
                             lineHeight: readOptionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>{copy.cellHeight}</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="field-input"
+                        value={profileDraft.font?.cellHeight ?? profileDraft.cellHeight ?? ''}
+                        onChange={(event) =>
+                          patchProfileFont({
+                            cellHeight: readOptionalNumber(event.target.value),
                           })
                         }
                       />
@@ -1712,6 +1745,27 @@ function App() {
                         })
                       }
                     />
+
+                    <label className="field-row field-row-span">
+                      <span>{copy.padding}</span>
+                      <input
+                        className="field-input"
+                        value={
+                          profileDraft.padding === undefined
+                            ? ''
+                            : String(profileDraft.padding)
+                        }
+                        placeholder="16,18,18"
+                        onChange={(event) =>
+                          patchProfileDraft({
+                            padding:
+                              event.target.value.trim().length > 0
+                                ? event.target.value
+                                : undefined,
+                          })
+                        }
+                      />
+                    </label>
 
                     <ColorField
                       label={copy.shellBackground}
@@ -1784,7 +1838,7 @@ function App() {
                     <button
                       type="button"
                       className="toolbar-button ghost"
-                      onClick={() => void createSession(selectedProfileId)}
+                      onClick={() => void createSession(selectedProfileId, 'single', profileDraft)}
                       disabled={profileDraft.hidden === true}
                     >
                       {copy.open}
@@ -1998,8 +2052,17 @@ function App() {
             {tabs.map((tab) => {
               const primarySession =
                 sessions.find((session) => session.id === tab.paneIds[0]) ?? activeSession
-              const profile = resolveProfile(settings, primarySession.profileId)
-              const tabLabel = tabLabelForTab(tab, sessions, settings)
+              const profile = resolveSessionProfile(
+                settings,
+                primarySession,
+                sessionProfileOverrides,
+              )
+              const tabLabel = tabLabelForTab(
+                tab,
+                sessions,
+                settings,
+                sessionProfileOverrides,
+              )
               const railLabel = compactRailLabel(tabLabel)
               const isActive = activeWorkspace === 'terminal' && tab.id === currentTab.id
 
@@ -2594,6 +2657,20 @@ function tabIdForSession(sessionId: string) {
   return `tab-${sessionId}`
 }
 
+function resolveSessionProfile(
+  settings: TerminalSettings,
+  session: SessionItem,
+  overrides: Record<string, TerminalProfile>,
+) {
+  const override = overrides[session.id]
+
+  if (!override) {
+    return resolveProfile(settings, session.profileId)
+  }
+
+  return mergeDraftProfile(settings, override)
+}
+
 function buildTabsFromSessions(sessions: SessionItem[]): WorkspaceTab[] {
   if (sessions.length === 0) {
     return []
@@ -2731,6 +2808,7 @@ function tabLabelForTab(
   tab: WorkspaceTab,
   sessions: SessionItem[],
   settings: TerminalSettings,
+  overrides: Record<string, TerminalProfile>,
 ) {
   const primarySession = sessions.find((session) => session.id === tab.paneIds[0])
 
@@ -2738,10 +2816,52 @@ function tabLabelForTab(
     return 'terminal'
   }
 
-  const primaryProfile = resolveProfile(settings, primarySession.profileId)
+  const primaryProfile = resolveSessionProfile(settings, primarySession, overrides)
   const primaryLabel = sessionTitle(primarySession, primaryProfile)
 
   return tab.paneIds.length > 1 ? `${primaryLabel} +${tab.paneIds.length - 1}` : primaryLabel
+}
+
+function mergeDraftProfile(settings: TerminalSettings, profile: TerminalProfile): ResolvedProfile {
+  const defaults = settings.profiles.defaults ?? {}
+  const mergedFont =
+    defaults.font || profile.font
+      ? {
+          ...(defaults.font ?? {}),
+          ...(profile.font ?? {}),
+        }
+      : undefined
+
+  return {
+    ...defaults,
+    ...profile,
+    font: mergedFont,
+    id: profileIdentifier(profile),
+  }
+}
+
+function applyProfileOverrideToSettings(
+  settings: TerminalSettings,
+  selectedProfileId: string,
+  draft: TerminalProfile,
+): TerminalSettings {
+  const draftId = profileIdentifier(draft)
+  const nextProfiles = settings.profiles.list.filter(
+    (profile) =>
+      profileIdentifier(profile) !== selectedProfileId && profileIdentifier(profile) !== draftId,
+  )
+
+  nextProfiles.push(draft)
+
+  return ensureLaunchableDefaultProfile({
+    ...settings,
+    defaultProfile:
+      settings.defaultProfile === selectedProfileId ? draftId : settings.defaultProfile,
+    profiles: {
+      ...settings.profiles,
+      list: nextProfiles,
+    },
+  })
 }
 
 function createFallbackSession(
@@ -3375,6 +3495,16 @@ function readOptionalNumber(value: string) {
 
   const parsed = Number(trimmed)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function readOptionalNumberOrString(value: string) {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : trimmed
 }
 
 function isTypingTarget(target: EventTarget | null) {

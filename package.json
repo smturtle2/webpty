@@ -9,6 +9,7 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "lint:web": "npm --workspace apps/web run lint",
+    "ui:smoke": "python scripts/capture_docs.py --check-only",
     "build:server": "cargo build --manifest-path apps/server/Cargo.toml",
     "check:server": "cargo check --manifest-path apps/server/Cargo.toml",
     "build": "npm run build:web && npm run build:server",

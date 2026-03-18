@@ -1,6 +1,6 @@
 import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type FontWeight } from '@xterm/xterm'
 import { useEffect, useEffectEvent, useRef, type CSSProperties } from 'react'
 import type { TerminalColorScheme, TerminalCursorShape } from '../types'
 
@@ -11,6 +11,7 @@ interface TerminalViewportProps {
   canConnect: boolean
   fontFamily: string
   fontSize: number
+  fontWeight: number | string
   lineHeight: number
   padding?: string
   opacity?: number
@@ -31,6 +32,7 @@ export function TerminalViewport({
   canConnect,
   fontFamily,
   fontSize,
+  fontWeight,
   lineHeight,
   padding,
   opacity,
@@ -49,6 +51,13 @@ export function TerminalViewport({
   const resizeTimerRef = useRef<number | null>(null)
   const deferredFitTimersRef = useRef<number[]>([])
   const deferredFitFramesRef = useRef<number[]>([])
+  const initialViewportOptionsRef = useRef({
+    cursorShape,
+    fontFamily,
+    fontSize,
+    fontWeight,
+    lineHeight,
+  })
 
   const reportConnectionState = useEffectEvent((nextState: 'connecting' | 'live' | 'offline') => {
     onConnectionStateChange(sessionId, nextState)
@@ -167,14 +176,17 @@ export function TerminalViewport({
       return
     }
 
+    const initialViewportOptions = initialViewportOptionsRef.current
     const term = new Terminal({
       allowTransparency: true,
       convertEol: true,
       cursorBlink: true,
       cursorInactiveStyle: 'outline',
-      fontFamily: 'Cascadia Mono',
-      fontSize: 13,
-      lineHeight: 1.22,
+      cursorStyle: mapCursorShape(initialViewportOptions.cursorShape),
+      fontFamily: initialViewportOptions.fontFamily,
+      fontSize: initialViewportOptions.fontSize,
+      fontWeight: normalizeFontWeight(initialViewportOptions.fontWeight),
+      lineHeight: initialViewportOptions.lineHeight,
       letterSpacing: 0.1,
       scrollback: 2000,
     })
@@ -246,10 +258,11 @@ export function TerminalViewport({
     term.options.theme = toXtermTheme(scheme, opacity)
     term.options.fontFamily = fontFamily
     term.options.fontSize = fontSize
+    term.options.fontWeight = normalizeFontWeight(fontWeight)
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
     queueFitPasses()
-  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, scheme])
+  }, [cursorShape, fontFamily, fontSize, fontWeight, lineHeight, opacity, padding, scheme])
 
   useEffect(() => {
     if (!active) {
@@ -369,6 +382,24 @@ function mapCursorShape(shape: TerminalCursorShape | undefined): 'block' | 'bar'
   }
 
   return 'block'
+}
+
+function normalizeFontWeight(value: number | string): FontWeight {
+  if (typeof value === 'number') {
+    return value
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'normal' || normalized === 'bold') {
+    return normalized
+  }
+
+  if (/^[1-9]00$/.test(normalized)) {
+    return normalized as FontWeight
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 'normal'
 }
 
 function buildSocketUrl(sessionId: string) {

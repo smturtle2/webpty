@@ -78,6 +78,7 @@ Action fields currently mapped by the frontend:
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
 - `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux, `~/Library/Application Support/webpty/settings.json` on macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
+- if no user-scoped path can be resolved at all, `webpty` falls back to a local `./settings.json` instead of the repo demo catalog
 - the repo sample at `./config/webpty.settings.json` is intentionally opt-in through `webpty up --settings ./config/webpty.settings.json`
 - the repo sample is a fixed demo catalog for screenshots and manual QA; it is not the same thing as the host-generated first-run defaults
 - if the settings file does not exist, `webpty` creates a default one
@@ -93,6 +94,7 @@ Action fields currently mapped by the frontend:
 - Theme Studio and Profile Studio draft syncing avoids self-triggered render loops while switching entries or reloading runtime settings
 - `GET /api/health` now includes `hostPlatform` so the UI can keep Profile Studio command and directory hints aligned with the runtime OS
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
+- Profile Studio also exposes font weight, cell height, and padding controls that feed the live viewport
 - theme and profile color inputs keep full token and hex values visible instead of clipping them down to a prefix stub
 - theme and profile color fields also offer shortcut chips for shared token values such as `accent`, `terminalBackground`, `terminalForeground`, `cursorColor`, and `selectionBackground`
 - helper copy inside Theme Studio and Profile Studio keeps sentence casing instead of inheriting the uppercase field-label treatment
@@ -105,6 +107,7 @@ Action fields currently mapped by the frontend:
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely, and `::1` is accepted as an explicit IPv6 loopback bind
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
+- `POST /api/sessions` also accepts an optional transient `profile` payload so unsaved Profile Studio drafts can be launched without persisting first
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - `defaultProfile` is normalized to a visible launchable profile during load and in-app editing
 - settings payloads must keep at least one visible profile available for launch
