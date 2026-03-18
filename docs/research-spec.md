@@ -25,7 +25,7 @@ Included:
 
 Excluded for now:
 
-- split panes
+- advanced pane graphs and persisted pane layouts
 - command palette
 - search overlay
 - multi-window UI

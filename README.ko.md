@@ -37,7 +37,7 @@
 
 아직 없는 것:
 
-- split panes
+- 더 깊은 pane graph, 드래그 재배치, 영속 pane 레이아웃
 - command palette / search
 - 탭 드래그 정렬
 - 더 넓은 Windows Terminal action object 패리티
@@ -150,6 +150,6 @@ cargo check
 - [x] mock transport를 PTY 세션 계층으로 교체
 - [x] 우측 세션 레일 기반의 터미널 중심 레이아웃 적용
 - [x] WT 호환 테마/프로필 편집 유지
-- [ ] split panes 추가
+- [ ] 현재 split layout을 넘어서는 pane 관리 확장
 - [ ] search / command palette 재도입
 - [ ] WT 설정 및 action 호환 범위 확대

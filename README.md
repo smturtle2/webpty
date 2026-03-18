@@ -43,7 +43,7 @@ Implemented today:
 
 Not implemented yet:
 
-- split panes
+- deeper pane graphs, drag rearranging, and persisted pane layouts
 - command palette and search surface
 - drag/drop or manual tab reordering
 - deeper Windows Terminal action object parity
@@ -174,6 +174,6 @@ Rust runtime
 - [x] Replace mock transport with a PTY-backed session layer
 - [x] Move to a terminal-dominant layout with a right-side session rail
 - [x] Keep WT-compatible theme and profile editing in-app
-- [ ] Add split panes
+- [ ] Expand pane management beyond the current split layout
 - [ ] Reintroduce search and command palette surfaces
 - [ ] Expand WT settings and action compatibility

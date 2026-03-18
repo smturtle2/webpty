@@ -120,4 +120,6 @@ Connection behavior:
 - WT-compatible theme and profile definitions remain the main source of truth.
 - `webpty up --funnel` depends on the local `tailscale` client and an authenticated
   node with Funnel capability.
-- Split panes, search, and command palette remain future milestones.
+- `webpty up --funnel` reuses an existing Funnel mapping for the same local target when
+  possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit.
+- Advanced pane graphs, search, and command palette remain future milestones.

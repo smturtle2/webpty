@@ -89,7 +89,6 @@ function App() {
   const themeName = resolveThemeName(settings.theme, uiAppearance) ?? 'System'
   const uiTheme = resolveUiTheme(settings, activeProfile, uiAppearance)
   const closeButtonMode = activeTheme?.tab?.showCloseButton ?? 'hover'
-  const canSplitCurrentTab = currentTab.paneIds.length === 1
   const visiblePaneSessions = paneSessions.length > 0 ? paneSessions : [activeSession]
   const activeTabLabel = tabLabelForTab(currentTab, sessions, settings)
   const visibleProfiles = settings.profiles.list
@@ -844,26 +843,6 @@ function App() {
             </button>
             <button
               type="button"
-              className="rail-action"
-              aria-label="Split vertically"
-              onClick={() => void createSession(activeProfile.id, 'vertical')}
-              disabled={!canSplitCurrentTab}
-            >
-              <span>sv</span>
-              <small>pane</small>
-            </button>
-            <button
-              type="button"
-              className="rail-action"
-              aria-label="Split horizontally"
-              onClick={() => void createSession(activeProfile.id, 'horizontal')}
-              disabled={!canSplitCurrentTab}
-            >
-              <span>sh</span>
-              <small>pane</small>
-            </button>
-            <button
-              type="button"
               className={`rail-action ${isSettingsOpen ? 'is-active' : ''}`}
               aria-label="Open settings"
               onClick={() => setIsSettingsOpen((current) => !current)}
@@ -1133,9 +1112,17 @@ function buildTabsFromSessions(sessions: SessionItem[]): WorkspaceTab[] {
 
 function syncTabsWithSessions(tabs: WorkspaceTab[], sessions: SessionItem[]): WorkspaceTab[] {
   const sessionIds = new Set(sessions.map((session) => session.id))
+  const claimedPaneIds = new Set<string>()
   const nextTabs = tabs
     .map((tab) => {
-      const paneIds = tab.paneIds.filter((paneId) => sessionIds.has(paneId))
+      const paneIds = tab.paneIds.filter((paneId) => {
+        if (!sessionIds.has(paneId) || claimedPaneIds.has(paneId)) {
+          return false
+        }
+
+        claimedPaneIds.add(paneId)
+        return true
+      })
 
       if (paneIds.length === 0) {
         return null
@@ -1149,8 +1136,7 @@ function syncTabsWithSessions(tabs: WorkspaceTab[], sessions: SessionItem[]): Wo
     })
     .filter((tab): tab is WorkspaceTab => tab !== null)
 
-  const assignedPaneIds = new Set(nextTabs.flatMap((tab) => tab.paneIds))
-  const orphanSessions = sessions.filter((session) => !assignedPaneIds.has(session.id))
+  const orphanSessions = sessions.filter((session) => !claimedPaneIds.has(session.id))
 
   return [
     ...nextTabs,

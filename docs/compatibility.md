@@ -58,6 +58,8 @@ Action fields currently mapped by the frontend:
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
+- `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
+- Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - profile launch uses the WT `commandline` when possible
@@ -67,7 +69,7 @@ Action fields currently mapped by the frontend:
 
 ## Known Gaps
 
-- split panes and pane graphs
+- advanced pane graphs and persisted pane layouts
 - full WT action object support with nested arguments
 - command palette and search surfaces
 - broader profile defaults coverage
