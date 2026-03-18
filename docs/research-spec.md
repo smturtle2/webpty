@@ -20,6 +20,8 @@ Included:
 - rail show/hide toggle
 - split creation from the rail
 - a right-anchored settings drawer
+- dedicated Theme Studio for shell chrome editing
+- dedicated Profile Studio for launch and font editing
 - keyboard session switching and creation
 - live PTY transport behind the UI
 - one-command Rust startup via `webpty up`
