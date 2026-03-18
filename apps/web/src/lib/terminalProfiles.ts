@@ -42,14 +42,23 @@ export function resolveProfile(
   profileId?: string,
 ): ResolvedProfile {
   const requestedId = profileId ?? settings.defaultProfile
+  const defaults = settings.profiles.defaults ?? {}
   const match =
     settings.profiles.list.find((profile) => profileIdentifier(profile) === requestedId) ??
     settings.profiles.list.find((profile) => profile.guid === settings.defaultProfile) ??
     settings.profiles.list[0]
+  const mergedFont =
+    defaults.font || match.font
+      ? {
+          ...(defaults.font ?? {}),
+          ...(match.font ?? {}),
+        }
+      : undefined
 
   return {
-    ...settings.profiles.defaults,
+    ...defaults,
     ...match,
+    font: mergedFont,
     id: profileIdentifier(match),
   }
 }
@@ -107,7 +116,16 @@ export function resolveScheme(
       ? selection
       : selection?.[appearance] ?? selection?.dark ?? selection?.light ?? DEFAULT_SCHEME.name
 
-  return settings.schemes?.find((scheme) => scheme.name === selectedName) ?? DEFAULT_SCHEME
+  const resolved =
+    settings.schemes?.find((scheme) => scheme.name === selectedName) ?? DEFAULT_SCHEME
+
+  return {
+    ...resolved,
+    background: profile.background ?? resolved.background,
+    foreground: profile.foreground ?? resolved.foreground,
+    cursorColor: profile.cursorColor ?? resolved.cursorColor,
+    selectionBackground: profile.selectionBackground ?? resolved.selectionBackground,
+  }
 }
 
 export function resolveUiTheme(
@@ -153,6 +171,18 @@ export function resolveUiTheme(
     success: scheme.green ?? '#6fd19d',
     shadow: '0 24px 64px rgba(0, 0, 0, 0.24)',
   }
+}
+
+export function resolveProfileFontFace(profile: ResolvedProfile | TerminalProfile): string {
+  return profile.font?.face ?? profile.fontFace ?? 'Cascadia Mono'
+}
+
+export function resolveProfileFontSize(profile: ResolvedProfile | TerminalProfile): number {
+  return profile.font?.size ?? profile.fontSize ?? 13
+}
+
+export function resolveProfileLineHeight(profile: ResolvedProfile | TerminalProfile): number {
+  return profile.font?.cellHeight ?? profile.lineHeight ?? 1.22
 }
 
 export function buildPreviewLines(transcript: string): string[] {

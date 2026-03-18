@@ -15,6 +15,9 @@ import {
   buildPreviewLines,
   formatSettingsJson,
   profileIdentifier,
+  resolveProfileFontFace,
+  resolveProfileFontSize,
+  resolveProfileLineHeight,
   resolveProfile,
   resolveScheme,
   resolveTheme,
@@ -29,6 +32,7 @@ import type {
   TerminalActionCommand,
   TerminalProfile,
   TerminalSettings,
+  TerminalTheme,
   UiThemeTokens,
 } from './types'
 
@@ -55,8 +59,8 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
 
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
-  { id: 'appearance', label: 'Appearance', meta: 'Theme and live shell surface' },
-  { id: 'profiles', label: 'Profiles', meta: 'Launch and default profile' },
+  { id: 'appearance', label: 'Theme Studio', meta: 'Surface, tabs, and shell chrome' },
+  { id: 'profiles', label: 'Profile Studio', meta: 'Shell launch and font behavior' },
   { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
   { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
 ]
@@ -88,6 +92,27 @@ function App() {
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [isBooting, setIsBooting] = useState(true)
+  const [selectedProfileId, setSelectedProfileId] = useState(demoSettings.defaultProfile)
+  const [profileDraft, setProfileDraft] = useState<TerminalProfile>(() =>
+    resolveProfile(demoSettings, demoSettings.defaultProfile),
+  )
+  const [selectedThemeName, setSelectedThemeName] = useState(
+    () =>
+      resolveThemeName(
+        demoSettings.theme,
+        resolveWindowAppearance(demoSettings, resolveAppearance()),
+      ) ??
+      demoSettings.themes?.[0]?.name ??
+      'Theme',
+  )
+  const [themeDraft, setThemeDraft] = useState<TerminalTheme>(
+    () =>
+      resolveTheme(
+        demoSettings,
+        resolveWindowAppearance(demoSettings, resolveAppearance()),
+      ) ??
+      demoSettings.themes?.[0] ?? { name: 'Theme' },
+  )
   const nextSessionIdRef = useRef(demoSessions.length + 1)
 
   const currentTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? buildTabsFromSessions(demoSessions)[0]
@@ -109,9 +134,20 @@ function App() {
   const closeButtonMode = activeTheme?.tab?.showCloseButton ?? 'hover'
   const visiblePaneSessions = paneSessions.length > 0 ? paneSessions : [activeSession]
   const activeTabLabel = tabLabelForTab(currentTab, sessions, settings)
-  const visibleProfiles = settings.profiles.list
-    .filter((profile) => profile.hidden !== true)
-    .map((profile) => resolveProfile(settings, profileIdentifier(profile)))
+  const profileCatalog = settings.profiles.list.map((profile) =>
+    resolveProfile(settings, profileIdentifier(profile)),
+  )
+  const themeCatalog = settings.themes ?? []
+  const selectedProfile =
+    profileCatalog.find((profile) => profile.id === selectedProfileId) ?? defaultProfile
+  const selectedTheme =
+    themeCatalog.find((theme) => theme.name === selectedThemeName) ??
+    activeTheme ??
+    themeCatalog[0] ??
+    demoSettings.themes?.[0] ??
+    ({ name: 'Theme' } satisfies TerminalTheme)
+  const selectedProfileSchemeName =
+    schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? activeScheme.name
   const actionBindings = resolveActionBindings(settings.actions)
   const canSplitActiveTab = currentTab.paneIds.length === 1
   const shortcutSummary = [
@@ -250,6 +286,35 @@ function App() {
       }
     }
   }, [activeSessionId, activeTabId, sessions, tabs])
+
+  useEffect(() => {
+    if (profileCatalog.length === 0) {
+      return
+    }
+
+    if (!profileCatalog.some((profile) => profile.id === selectedProfileId)) {
+      setSelectedProfileId(profileCatalog[0].id)
+      return
+    }
+
+    setProfileDraft(resolveProfile(settings, selectedProfileId))
+  }, [profileCatalog, selectedProfileId, settings])
+
+  useEffect(() => {
+    if (themeCatalog.length === 0) {
+      setThemeDraft({ name: 'Theme' })
+      return
+    }
+
+    if (!themeCatalog.some((theme) => theme.name === selectedThemeName)) {
+      setSelectedThemeName(themeCatalog[0].name)
+      return
+    }
+
+    setThemeDraft(
+      themeCatalog.find((theme) => theme.name === selectedThemeName) ?? themeCatalog[0],
+    )
+  }, [selectedThemeName, themeCatalog])
 
   function activateSession(sessionId: string) {
     const owner = findTabByPaneId(tabs, sessionId)
@@ -524,18 +589,104 @@ function App() {
     }
   }
 
-  async function handleThemeApply(nextThemeName: string) {
-    await commitSettings(
-      {
-        ...settingsDocument,
-        theme: applyThemeSelection(settings.theme, uiAppearance, nextThemeName),
-      },
-      canConnect,
-    )
+  async function handleProfileDraftSave() {
+    const nextProfileId = profileIdentifier(profileDraft)
+    const nextDocument = updateProfileDocument(settingsDocument, selectedProfileId, profileDraft)
+    await commitSettings(nextDocument, canConnect)
+    setSelectedProfileId(nextProfileId)
   }
 
-  async function handleDefaultProfileSelect(profileId: string) {
-    await commitSettings({ ...settingsDocument, defaultProfile: profileId }, canConnect)
+  async function handleProfileDraftDefault() {
+    const nextProfileId = profileIdentifier(profileDraft)
+    const nextDocument = {
+      ...updateProfileDocument(settingsDocument, selectedProfileId, profileDraft),
+      defaultProfile: nextProfileId,
+    }
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedProfileId(nextProfileId)
+  }
+
+  function handleProfileDraftReset() {
+    setProfileDraft(selectedProfile)
+  }
+
+  async function handleThemeDraftSave() {
+    const nextDocument = updateThemeDocument(settingsDocument, selectedThemeName, themeDraft)
+    await commitSettings(nextDocument, canConnect)
+    setSelectedThemeName(themeDraft.name)
+  }
+
+  async function handleThemeDraftApply() {
+    const nextDocument = updateThemeSelectionDocument(
+      updateThemeDocument(settingsDocument, selectedThemeName, themeDraft),
+      settings.theme,
+      uiAppearance,
+      themeDraft.name,
+    )
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedThemeName(themeDraft.name)
+  }
+
+  function handleThemeDraftReset() {
+    setThemeDraft(selectedTheme)
+  }
+
+  function patchThemeDraft(patch: Partial<TerminalTheme>) {
+    setThemeDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function patchThemeWindow(patch: Partial<NonNullable<TerminalTheme['window']>>) {
+    setThemeDraft((current) => ({
+      ...current,
+      window: {
+        ...(current.window ?? {}),
+        ...patch,
+      },
+    }))
+  }
+
+  function patchThemeTab(patch: Partial<NonNullable<TerminalTheme['tab']>>) {
+    setThemeDraft((current) => ({
+      ...current,
+      tab: {
+        ...(current.tab ?? {}),
+        ...patch,
+      },
+    }))
+  }
+
+  function patchThemeTabRow(patch: Partial<NonNullable<TerminalTheme['tabRow']>>) {
+    setThemeDraft((current) => ({
+      ...current,
+      tabRow: {
+        ...(current.tabRow ?? {}),
+        ...patch,
+      },
+    }))
+  }
+
+  function patchProfileDraft(patch: Partial<TerminalProfile>) {
+    setProfileDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function patchProfileFont(patch: Partial<NonNullable<TerminalProfile['font']>>) {
+    setProfileDraft((current) => {
+      const nextFont = {
+        ...(current.font ?? {}),
+        ...patch,
+      }
+
+      return {
+        ...current,
+        font: nextFont,
+        fontFace: nextFont.face ?? current.fontFace,
+        fontSize: nextFont.size ?? current.fontSize,
+        fontWeight: nextFont.weight ?? current.fontWeight,
+        cellHeight: nextFont.cellHeight ?? current.cellHeight,
+      }
+    })
   }
 
   async function handleSettingsSave() {
@@ -606,9 +757,9 @@ function App() {
                       canConnect={canConnect}
                       cursorShape={profile.cursorShape}
                       fallbackLines={session.previewLines}
-                      fontFamily={profile.fontFace ?? 'Cascadia Mono'}
-                      fontSize={profile.fontSize ?? 13}
-                      lineHeight={profile.lineHeight ?? 1.22}
+                      fontFamily={resolveProfileFontFace(profile)}
+                      fontSize={resolveProfileFontSize(profile)}
+                      lineHeight={resolveProfileLineHeight(profile)}
                       onConnectionStateChange={handleConnectionStateChange}
                       onShortcut={handleShortcut}
                       onTranscriptChange={handleTranscriptChange}
@@ -633,7 +784,7 @@ function App() {
               aria-label="Settings"
             >
               <div className="drawer-header">
-                <div>
+                <div className="drawer-header-copy">
                   <span className="header-label">Settings</span>
                   <strong>{settingsSectionMeta.label}</strong>
                   <p>{settingsSectionMeta.meta}</p>
@@ -666,8 +817,13 @@ function App() {
                       }`}
                       onClick={() => setActiveSettingsSection(section.id)}
                     >
-                      <strong>{section.label}</strong>
-                      <span>{section.meta}</span>
+                      <span className="drawer-nav-item-icon" aria-hidden="true">
+                        <SettingsSectionIcon section={section.id} />
+                      </span>
+                      <span className="drawer-nav-item-copy">
+                        <strong>{section.label}</strong>
+                        <span>{section.meta}</span>
+                      </span>
                     </button>
                   ))}
 
@@ -687,65 +843,240 @@ function App() {
                   {activeSettingsSection === 'appearance' ? (
                     <section className="drawer-panel">
                       <div className="section-heading">
-                        <strong>Shell surface</strong>
-                        <p>Black terminal stage, white tab strip, and flat chrome sourced from the shared theme definition.</p>
+                        <strong>Theme studio</strong>
+                        <p>Keep the shell black, the tab surfaces white, and the chrome flat while editing the shared theme payload directly.</p>
                       </div>
 
                       <section className="drawer-overview" aria-label="Appearance overview">
                         <article className="summary-card">
-                          <span className="header-label">Default</span>
-                          <strong>{defaultProfile.name}</strong>
-                          <span>{defaultProfile.commandline ?? 'default shell'}</span>
-                        </article>
-                        <article className="summary-card">
-                          <span className="header-label">Theme</span>
+                          <span className="header-label">Applied</span>
                           <strong>{themeName}</strong>
-                          <span>{activeScheme.name}</span>
+                          <span>{uiAppearance} shell</span>
                         </article>
                         <article className="summary-card">
-                          <span className="header-label">Profile</span>
-                          <strong>{activeProfile.name}</strong>
-                          <span>
-                            {activeProfile.fontFace ?? 'Cascadia Mono'} ·{' '}
-                            {activeProfile.fontSize ?? 13}px
-                          </span>
+                          <span className="header-label">Row</span>
+                          <strong>{activeTheme?.tabRow?.background ?? '#efefef'}</strong>
+                          <span>tab strip</span>
+                        </article>
+                        <article className="summary-card">
+                          <span className="header-label">Surface</span>
+                          <strong>{activeTheme?.tab?.background ?? '#ffffff'}</strong>
+                          <span>{activeScheme.name}</span>
                         </article>
                       </section>
 
-                      <section className="drawer-section">
-                        <div className="section-heading">
-                          <strong>Themes</strong>
-                          <p>Apply the shared theme name exactly as it appears in `settings.json`.</p>
-                        </div>
-
-                        <div className="theme-grid">
-                          {settings.themes?.map((theme) => {
+                      <section className="drawer-section studio-layout">
+                        <div className="studio-list" aria-label="Themes">
+                          {themeCatalog.map((theme) => {
                             const previewTheme = resolveUiTheme(
                               { ...settings, theme: theme.name },
                               activeProfile,
                               uiAppearance,
                             )
+                            const isSelected = theme.name === selectedThemeName
+                            const isApplied = theme.name === themeName
 
                             return (
                               <button
                                 key={theme.name}
                                 type="button"
-                                className={`theme-chip ${
-                                  theme.name === themeName ? 'is-active' : ''
-                                }`}
-                                style={
-                                  {
-                                    '--chip-accent': previewTheme.chrome,
-                                    '--chip-tone': previewTheme.panel,
-                                  } as CSSProperties
-                                }
-                                onClick={() => void handleThemeApply(theme.name)}
+                                className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => setSelectedThemeName(theme.name)}
                               >
-                                <span className="theme-chip-swatch" />
-                                <span>{theme.name}</span>
+                                <span
+                                  className="studio-swatch"
+                                  style={
+                                    {
+                                      '--swatch-accent': previewTheme.tabActive,
+                                      '--swatch-muted': previewTheme.tabStrip,
+                                      '--swatch-shell': previewTheme.terminalBackground,
+                                    } as CSSProperties
+                                  }
+                                />
+                                <div className="studio-list-copy">
+                                  <strong>{theme.name}</strong>
+                                  <span>{isApplied ? 'active shell theme' : 'saved theme'}</span>
+                                </div>
                               </button>
                             )
                           })}
+                        </div>
+
+                        <div className="studio-form">
+                          <div className="section-heading">
+                            <strong>{themeDraft.name}</strong>
+                            <p>These fields write back to the shared `themes[]` payload and keep the shell surface flat.</p>
+                          </div>
+
+                          <div className="theme-preview" aria-hidden="true">
+                            <div
+                              className="theme-preview-strip"
+                              style={{ background: themeDraft.tabRow?.background ?? '#efefef' }}
+                            >
+                              <span
+                                className="theme-preview-tab is-active"
+                                style={{ background: themeDraft.tab?.background ?? '#ffffff' }}
+                              >
+                                selected
+                              </span>
+                              <span
+                                className="theme-preview-tab"
+                                style={{
+                                  background:
+                                    themeDraft.tab?.unfocusedBackground ?? '#f4f4f4',
+                                }}
+                              >
+                                idle
+                              </span>
+                            </div>
+                            <div
+                              className="theme-preview-terminal"
+                              style={{
+                                background: activeScheme.background,
+                                color: activeScheme.foreground,
+                              }}
+                            >
+                              {themeDraft.window?.applicationTheme ?? 'system'} shell
+                            </div>
+                          </div>
+
+                          <div className="field-grid">
+                            <label className="field-row">
+                              <span>Theme name</span>
+                              <input
+                                className="field-input"
+                                value={themeDraft.name}
+                                onChange={(event) => patchThemeDraft({ name: event.target.value })}
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>App appearance</span>
+                              <select
+                                className="field-input"
+                                value={themeDraft.window?.applicationTheme ?? 'system'}
+                                onChange={(event) =>
+                                  patchThemeWindow({
+                                    applicationTheme: event.target.value as
+                                      | 'system'
+                                      | 'dark'
+                                      | 'light',
+                                  })
+                                }
+                              >
+                                <option value="system">system</option>
+                                <option value="dark">dark</option>
+                                <option value="light">light</option>
+                              </select>
+                            </label>
+
+                            <label className="field-row">
+                              <span>Active tab</span>
+                              <input
+                                className="field-input"
+                                value={themeDraft.tab?.background ?? ''}
+                                placeholder="#ffffff"
+                                onChange={(event) =>
+                                  patchThemeTab({ background: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Inactive tab</span>
+                              <input
+                                className="field-input"
+                                value={themeDraft.tab?.unfocusedBackground ?? ''}
+                                placeholder="#f4f4f4"
+                                onChange={(event) =>
+                                  patchThemeTab({ unfocusedBackground: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Tab strip</span>
+                              <input
+                                className="field-input"
+                                value={themeDraft.tabRow?.background ?? ''}
+                                placeholder="#efefef"
+                                onChange={(event) =>
+                                  patchThemeTabRow({ background: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Strip inactive</span>
+                              <input
+                                className="field-input"
+                                value={themeDraft.tabRow?.unfocusedBackground ?? ''}
+                                placeholder="#e7e7e7"
+                                onChange={(event) =>
+                                  patchThemeTabRow({
+                                    unfocusedBackground: event.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Close button</span>
+                              <select
+                                className="field-input"
+                                value={themeDraft.tab?.showCloseButton ?? 'hover'}
+                                onChange={(event) =>
+                                  patchThemeTab({
+                                    showCloseButton: event.target.value as
+                                      | 'always'
+                                      | 'hover'
+                                      | 'never'
+                                      | 'activeOnly',
+                                  })
+                                }
+                              >
+                                <option value="hover">hover</option>
+                                <option value="activeOnly">active only</option>
+                                <option value="always">always</option>
+                                <option value="never">never</option>
+                              </select>
+                            </label>
+
+                            <label className="field-row field-row-toggle">
+                              <span>Mica tint</span>
+                              <input
+                                type="checkbox"
+                                checked={themeDraft.window?.useMica ?? false}
+                                onChange={(event) =>
+                                  patchThemeWindow({ useMica: event.target.checked })
+                                }
+                              />
+                            </label>
+                          </div>
+
+                          <div className="field-actions">
+                            <button
+                              type="button"
+                              className="toolbar-button"
+                              onClick={() => void handleThemeDraftSave()}
+                            >
+                              Save theme
+                            </button>
+                            <button
+                              type="button"
+                              className="toolbar-button ghost"
+                              onClick={() => void handleThemeDraftApply()}
+                            >
+                              Use on this shell
+                            </button>
+                            <button
+                              type="button"
+                              className="toolbar-button ghost"
+                              onClick={handleThemeDraftReset}
+                            >
+                              Reset
+                            </button>
+                          </div>
                         </div>
                       </section>
                     </section>
@@ -754,57 +1085,262 @@ function App() {
                   {activeSettingsSection === 'profiles' ? (
                     <section className="drawer-panel">
                       <div className="section-heading">
-                        <strong>Profiles</strong>
-                        <p>Launch a new tab or promote one profile as the default startup target.</p>
+                        <strong>Profile studio</strong>
+                        <p>Edit launch command, prompt-facing metadata, and terminal font behavior without leaving the shell.</p>
                       </div>
 
-                      <div className="profile-grid">
-                        {visibleProfiles.map((profile) => {
-                          const isDefault = profile.id === defaultProfile.id
+                      <section className="drawer-section studio-layout">
+                        <div className="studio-list" aria-label="Profiles">
+                          {profileCatalog.map((profile) => {
+                            const isSelected = profile.id === selectedProfileId
+                            const isDefault = profile.id === defaultProfile.id
 
-                          return (
-                            <article
-                              key={profile.id}
-                              className={`profile-card ${isDefault ? 'is-default' : ''}`}
-                            >
-                              <div className="profile-card-head">
-                                <div className="profile-card-identity">
-                                  <ProfileGlyph profile={profile} />
-                                  <div>
-                                    <strong>{profile.name}</strong>
-                                    <p>{profile.commandline ?? 'Default commandline'}</p>
-                                  </div>
+                            return (
+                              <button
+                                key={profile.id}
+                                type="button"
+                                className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => setSelectedProfileId(profile.id)}
+                              >
+                                <ProfileGlyph profile={profile} compact />
+                                <div className="studio-list-copy">
+                                  <strong>{profile.name}</strong>
+                                  <span>{profile.commandline ?? 'default shell'}</span>
                                 </div>
                                 <span className="profile-badge">
-                                  {isDefault ? 'default' : profile.cursorShape ?? 'bar'}
+                                  {isDefault ? 'default' : profile.hidden ? 'hidden' : 'live'}
                                 </span>
-                              </div>
-                              <span>
-                                {profile.startingDirectory ?? '~'} ·{' '}
-                                {profile.fontFace ?? 'Cascadia Mono'}
-                              </span>
+                              </button>
+                            )
+                          })}
+                        </div>
 
-                              <div className="profile-card-actions">
-                                <button
-                                  type="button"
-                                  className="toolbar-button"
-                                  onClick={() => void createSession(profile.id)}
-                                >
-                                  Launch
-                                </button>
-                                <button
-                                  type="button"
-                                  className="toolbar-button ghost"
-                                  onClick={() => void handleDefaultProfileSelect(profile.id)}
-                                  disabled={isDefault}
-                                >
-                                  Set default
-                                </button>
-                              </div>
-                            </article>
-                          )
-                        })}
-                      </div>
+                        <div className="studio-form">
+                          <div className="section-heading">
+                            <strong>{profileDraft.name}</strong>
+                            <p>{promptPrefixForProfile(profileDraft, profileDraft.startingDirectory ?? '~')}</p>
+                          </div>
+
+                          <div className="field-grid field-grid-wide">
+                            <label className="field-row">
+                              <span>Profile name</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.name}
+                                onChange={(event) => patchProfileDraft({ name: event.target.value })}
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Icon or badge</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.icon ?? ''}
+                                placeholder="PS"
+                                onChange={(event) => patchProfileDraft({ icon: event.target.value })}
+                              />
+                            </label>
+
+                            <label className="field-row field-row-span">
+                              <span>Command line</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.commandline ?? ''}
+                                placeholder="pwsh.exe"
+                                onChange={(event) =>
+                                  patchProfileDraft({ commandline: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row field-row-span">
+                              <span>Starting directory</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.startingDirectory ?? ''}
+                                placeholder="%USERPROFILE%"
+                                onChange={(event) =>
+                                  patchProfileDraft({ startingDirectory: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Tab title</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.tabTitle ?? ''}
+                                placeholder="Admin"
+                                onChange={(event) =>
+                                  patchProfileDraft({ tabTitle: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Tab accent</span>
+                              <input
+                                className="field-input"
+                                value={profileDraft.tabColor ?? ''}
+                                placeholder="#3b78ff"
+                                onChange={(event) =>
+                                  patchProfileDraft({ tabColor: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Color scheme</span>
+                              <select
+                                className="field-input"
+                                value={selectedProfileSchemeName}
+                                onChange={(event) =>
+                                  patchProfileDraft({ colorScheme: event.target.value })
+                                }
+                              >
+                                {(settings.schemes ?? []).map((scheme) => (
+                                  <option key={scheme.name} value={scheme.name}>
+                                    {scheme.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="field-row">
+                              <span>Font face</span>
+                              <input
+                                className="field-input"
+                                value={resolveProfileFontFace(profileDraft)}
+                                placeholder="Cascadia Mono"
+                                onChange={(event) =>
+                                  patchProfileFont({ face: event.target.value })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Font size</span>
+                              <input
+                                type="number"
+                                className="field-input"
+                                value={resolveProfileFontSize(profileDraft)}
+                                onChange={(event) =>
+                                  patchProfileFont({
+                                    size: readOptionalNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Line height</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="field-input"
+                                value={profileDraft.lineHeight ?? ''}
+                                onChange={(event) =>
+                                  patchProfileDraft({
+                                    lineHeight: readOptionalNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row">
+                              <span>Cursor</span>
+                              <select
+                                className="field-input"
+                                value={profileDraft.cursorShape ?? 'bar'}
+                                onChange={(event) =>
+                                  patchProfileDraft({
+                                    cursorShape: event.target.value as TerminalProfile['cursorShape'],
+                                  })
+                                }
+                              >
+                                <option value="bar">bar</option>
+                                <option value="block">block</option>
+                                <option value="filledBox">filled box</option>
+                                <option value="emptyBox">empty box</option>
+                                <option value="doubleUnderscore">double underscore</option>
+                                <option value="underline">underline</option>
+                                <option value="underscore">underscore</option>
+                                <option value="vintage">vintage</option>
+                              </select>
+                            </label>
+
+                            <label className="field-row">
+                              <span>Opacity</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                className="field-input"
+                                value={profileDraft.opacity ?? ''}
+                                onChange={(event) =>
+                                  patchProfileDraft({
+                                    opacity: readOptionalNumber(event.target.value),
+                                  })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row field-row-toggle">
+                              <span>Acrylic blur</span>
+                              <input
+                                type="checkbox"
+                                checked={profileDraft.useAcrylic ?? false}
+                                onChange={(event) =>
+                                  patchProfileDraft({ useAcrylic: event.target.checked })
+                                }
+                              />
+                            </label>
+
+                            <label className="field-row field-row-toggle">
+                              <span>Hidden</span>
+                              <input
+                                type="checkbox"
+                                checked={profileDraft.hidden ?? false}
+                                onChange={(event) =>
+                                  patchProfileDraft({ hidden: event.target.checked })
+                                }
+                              />
+                            </label>
+                          </div>
+
+                          <div className="field-actions">
+                            <button
+                              type="button"
+                              className="toolbar-button"
+                              onClick={() => void handleProfileDraftSave()}
+                            >
+                              Save profile
+                            </button>
+                            <button
+                              type="button"
+                              className="toolbar-button ghost"
+                              onClick={() => void createSession(selectedProfileId)}
+                              disabled={profileDraft.hidden === true}
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              className="toolbar-button ghost"
+                              onClick={() => void handleProfileDraftDefault()}
+                            >
+                              Use at startup
+                            </button>
+                            <button
+                              type="button"
+                              className="toolbar-button ghost"
+                              onClick={handleProfileDraftReset}
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      </section>
                     </section>
                   ) : null}
 
@@ -889,7 +1425,7 @@ function App() {
               onClick={toggleRail}
               title={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
             >
-              <span>{isRailCollapsed ? '<' : '>'}</span>
+              <RailToggleIcon collapsed={isRailCollapsed} />
             </button>
 
             <button
@@ -899,7 +1435,7 @@ function App() {
               title="Open settings"
               onClick={() => revealSettings('appearance')}
             >
-              <span>cfg</span>
+              <SettingsGlyph />
             </button>
           </div>
 
@@ -935,7 +1471,7 @@ function App() {
                     <span className="rail-tab-icon">
                       <ProfileGlyph profile={profile} compact />
                     </span>
-                    <span className="rail-tab-copy">{compactRailLabel(tabLabel)}</span>
+                    <span className="rail-tab-copy">{tabLabel}</span>
                     {tab.paneIds.length > 1 ? (
                       <span className="rail-tab-meta">{tab.paneIds.length}</span>
                     ) : null}
@@ -948,7 +1484,7 @@ function App() {
                       onClick={() => void closeTab(tab.id)}
                       aria-label={`Close ${tabLabel}`}
                     >
-                      ×
+                      <CloseGlyph />
                     </button>
                   ) : null}
                 </div>
@@ -964,7 +1500,7 @@ function App() {
               title="New tab"
               onClick={() => void createSession()}
             >
-              <span>+</span>
+              <NewTabGlyph />
             </button>
             <button
               type="button"
@@ -974,7 +1510,7 @@ function App() {
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'vertical')}
             >
-              <span>|</span>
+              <SplitVerticalGlyph />
             </button>
             <button
               type="button"
@@ -984,7 +1520,7 @@ function App() {
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'horizontal')}
             >
-              <span>-</span>
+              <SplitHorizontalGlyph />
             </button>
             <button
               type="button"
@@ -993,7 +1529,7 @@ function App() {
               title="Edit settings.json"
               onClick={() => revealSettings('json')}
             >
-              <span>js</span>
+              <CodeGlyph />
             </button>
           </div>
         </aside>
@@ -1063,7 +1599,8 @@ function normalizeSettings(payload: unknown): TerminalSettings {
                   showCloseButton:
                     theme.tab.showCloseButton === 'always' ||
                     theme.tab.showCloseButton === 'hover' ||
-                    theme.tab.showCloseButton === 'never'
+                    theme.tab.showCloseButton === 'never' ||
+                    theme.tab.showCloseButton === 'activeOnly'
                       ? theme.tab.showCloseButton
                       : undefined,
                   unfocusedBackground: asOptionalString(theme.tab.unfocusedBackground),
@@ -1168,6 +1705,8 @@ function normalizeProfile(payload: unknown): TerminalProfile | null {
     return null
   }
 
+  const font = isRecord(payload.font) ? normalizeFont(payload.font) : undefined
+
   return {
     id: asOptionalString(payload.id),
     guid: asOptionalString(payload.guid),
@@ -1180,27 +1719,64 @@ function normalizeProfile(payload: unknown): TerminalProfile | null {
     tabColor: asOptionalString(payload.tabColor ?? payload.tab_color),
     tabTitle: asOptionalString(payload.tabTitle ?? payload.tab_title),
     colorScheme: normalizeSchemeSelection(payload.colorScheme ?? payload.color_scheme),
-    fontFace: asOptionalString(payload.fontFace ?? payload.font_face),
-    fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size),
+    font,
+    fontFace: asOptionalString(payload.fontFace ?? payload.font_face) ?? font?.face,
+    fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size) ?? font?.size,
+    fontWeight: asOptionalNumberOrString(payload.fontWeight ?? payload.font_weight) ?? font?.weight,
+    cellHeight: asOptionalNumber(payload.cellHeight ?? payload.cell_height) ?? font?.cellHeight,
     lineHeight: asOptionalNumber(payload.lineHeight ?? payload.line_height),
     cursorShape: asOptionalString(payload.cursorShape ?? payload.cursor_shape) as
       | TerminalProfile['cursorShape']
       | undefined,
     opacity: asOptionalNumber(payload.opacity),
     useAcrylic: asOptionalBoolean(payload.useAcrylic ?? payload.use_acrylic),
+    foreground: asOptionalString(payload.foreground),
+    background: asOptionalString(payload.background),
+    cursorColor: asOptionalString(payload.cursorColor ?? payload.cursor_color),
+    selectionBackground: asOptionalString(
+      payload.selectionBackground ?? payload.selection_background,
+    ),
+    padding:
+      typeof payload.padding === 'string' || typeof payload.padding === 'number'
+        ? payload.padding
+        : undefined,
   }
 }
 
 function normalizeProfileDefaults(payload: Record<string, unknown>) {
+  const font = isRecord(payload.font) ? normalizeFont(payload.font) : undefined
+
   return {
-    fontFace: asOptionalString(payload.fontFace ?? payload.font_face),
-    fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size),
+    font,
+    fontFace: asOptionalString(payload.fontFace ?? payload.font_face) ?? font?.face,
+    fontSize: asOptionalNumber(payload.fontSize ?? payload.font_size) ?? font?.size,
+    fontWeight: asOptionalNumberOrString(payload.fontWeight ?? payload.font_weight) ?? font?.weight,
+    cellHeight: asOptionalNumber(payload.cellHeight ?? payload.cell_height) ?? font?.cellHeight,
     lineHeight: asOptionalNumber(payload.lineHeight ?? payload.line_height),
     cursorShape: asOptionalString(payload.cursorShape ?? payload.cursor_shape) as
       | TerminalProfile['cursorShape']
       | undefined,
     opacity: asOptionalNumber(payload.opacity),
     useAcrylic: asOptionalBoolean(payload.useAcrylic ?? payload.use_acrylic),
+    foreground: asOptionalString(payload.foreground),
+    background: asOptionalString(payload.background),
+    cursorColor: asOptionalString(payload.cursorColor ?? payload.cursor_color),
+    selectionBackground: asOptionalString(
+      payload.selectionBackground ?? payload.selection_background,
+    ),
+    padding:
+      typeof payload.padding === 'string' || typeof payload.padding === 'number'
+        ? payload.padding
+        : undefined,
+  }
+}
+
+function normalizeFont(payload: Record<string, unknown>) {
+  return {
+    face: asOptionalString(payload.face),
+    size: asOptionalNumber(payload.size),
+    weight: asOptionalNumberOrString(payload.weight),
+    cellHeight: asOptionalNumber(payload.cellHeight ?? payload.cell_height),
   }
 }
 
@@ -1611,6 +2187,232 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function updateProfileDocument(
+  document: Record<string, unknown>,
+  selectedProfileId: string,
+  draft: TerminalProfile,
+) {
+  const nextDocument = cloneSettingsDocument(document)
+  const nextProfiles = ensureProfilesDocument(nextDocument)
+  let replaced = false
+
+  nextProfiles.list = nextProfiles.list.map((entry) => {
+    const normalized = normalizeProfile(entry)
+    if (!normalized || profileIdentifier(normalized) !== selectedProfileId) {
+      return entry
+    }
+
+    replaced = true
+    return serializeProfileRecord(entry, draft)
+  })
+
+  if (!replaced) {
+    nextProfiles.list.push(serializeProfileRecord({}, draft))
+  }
+
+  if (nextDocument.defaultProfile === selectedProfileId) {
+    nextDocument.defaultProfile = profileIdentifier(draft)
+  }
+
+  nextDocument.profiles = nextProfiles
+  return nextDocument
+}
+
+function updateThemeDocument(
+  document: Record<string, unknown>,
+  selectedThemeName: string,
+  draft: TerminalTheme,
+) {
+  const nextDocument = cloneSettingsDocument(document)
+  const nextThemes = Array.isArray(nextDocument.themes) ? [...nextDocument.themes] : []
+  let replaced = false
+
+  const themes = nextThemes.map((entry) => {
+    if (!isRecord(entry) || asString(entry.name, '') !== selectedThemeName) {
+      return entry
+    }
+
+    replaced = true
+    return serializeThemeRecord(entry, draft)
+  })
+
+  if (!replaced) {
+    themes.push(serializeThemeRecord({}, draft))
+  }
+
+  nextDocument.themes = themes
+  nextDocument.theme = renameThemeSelection(nextDocument.theme, selectedThemeName, draft.name)
+  return nextDocument
+}
+
+function updateThemeSelectionDocument(
+  document: Record<string, unknown>,
+  current: TerminalSettings['theme'],
+  appearance: 'dark' | 'light',
+  nextThemeName: string,
+) {
+  return {
+    ...cloneSettingsDocument(document),
+    theme: applyThemeSelection(current, appearance, nextThemeName),
+  }
+}
+
+function ensureProfilesDocument(document: Record<string, unknown>) {
+  const current = isRecord(document.profiles) ? cloneJson(document.profiles) : {}
+  return {
+    ...current,
+    list: Array.isArray(current.list) ? [...current.list] : [],
+  }
+}
+
+function serializeThemeRecord(existing: unknown, draft: TerminalTheme) {
+  const nextTheme = isRecord(existing) ? cloneJson(existing) : {}
+  nextTheme.name = draft.name
+  assignNestedRecord(nextTheme, 'window', {
+    applicationTheme: draft.window?.applicationTheme,
+    useMica: draft.window?.useMica,
+  })
+  assignNestedRecord(nextTheme, 'tab', {
+    background: draft.tab?.background,
+    unfocusedBackground: draft.tab?.unfocusedBackground,
+    showCloseButton: draft.tab?.showCloseButton,
+  })
+  assignNestedRecord(nextTheme, 'tabRow', {
+    background: draft.tabRow?.background,
+    unfocusedBackground: draft.tabRow?.unfocusedBackground,
+  })
+  return nextTheme
+}
+
+function serializeProfileRecord(existing: unknown, draft: TerminalProfile) {
+  const nextProfile = isRecord(existing) ? cloneJson(existing) : {}
+  const font = draft.font ?? {}
+
+  nextProfile.name = draft.name
+  assignOptional(nextProfile, 'guid', draft.guid)
+  assignOptional(nextProfile, 'icon', draft.icon)
+  assignOptional(nextProfile, 'commandline', draft.commandline)
+  assignOptional(nextProfile, 'startingDirectory', draft.startingDirectory)
+  assignOptional(nextProfile, 'source', draft.source)
+  assignOptional(nextProfile, 'hidden', draft.hidden)
+  assignOptional(nextProfile, 'tabColor', draft.tabColor)
+  assignOptional(nextProfile, 'tabTitle', draft.tabTitle)
+  assignOptional(nextProfile, 'colorScheme', draft.colorScheme)
+  assignOptional(nextProfile, 'cursorShape', draft.cursorShape)
+  assignOptional(nextProfile, 'lineHeight', draft.lineHeight)
+  assignOptional(nextProfile, 'opacity', draft.opacity)
+  assignOptional(nextProfile, 'useAcrylic', draft.useAcrylic)
+  assignOptional(nextProfile, 'foreground', draft.foreground)
+  assignOptional(nextProfile, 'background', draft.background)
+  assignOptional(nextProfile, 'cursorColor', draft.cursorColor)
+  assignOptional(nextProfile, 'selectionBackground', draft.selectionBackground)
+  assignOptional(nextProfile, 'padding', draft.padding)
+
+  if (hasOwnValues(font)) {
+    assignNestedRecord(nextProfile, 'font', {
+      face: font.face ?? draft.fontFace,
+      size: font.size ?? draft.fontSize,
+      weight: font.weight ?? draft.fontWeight,
+      cellHeight: font.cellHeight ?? draft.cellHeight,
+    })
+    delete nextProfile.fontFace
+    delete nextProfile.fontSize
+    delete nextProfile.fontWeight
+    delete nextProfile.cellHeight
+  } else {
+    assignOptional(nextProfile, 'fontFace', draft.fontFace)
+    assignOptional(nextProfile, 'fontSize', draft.fontSize)
+    assignOptional(nextProfile, 'fontWeight', draft.fontWeight)
+    assignOptional(nextProfile, 'cellHeight', draft.cellHeight)
+    if (isRecord(nextProfile.font) && !hasOwnValues(nextProfile.font)) {
+      delete nextProfile.font
+    }
+  }
+
+  return nextProfile
+}
+
+function renameThemeSelection(
+  selection: unknown,
+  previousName: string,
+  nextName: string,
+): TerminalSettings['theme'] {
+  if (!selection) {
+    return undefined
+  }
+
+  if (typeof selection === 'string') {
+    return selection === previousName ? nextName : selection
+  }
+
+  if (!isRecord(selection)) {
+    return undefined
+  }
+
+  return {
+    dark: selection.dark === previousName ? nextName : asOptionalString(selection.dark),
+    light: selection.light === previousName ? nextName : asOptionalString(selection.light),
+    system:
+      selection.system === previousName ? nextName : asOptionalString(selection.system),
+  }
+}
+
+function assignNestedRecord(
+  target: Record<string, unknown>,
+  key: string,
+  patch: Record<string, unknown>,
+) {
+  const nextValue = isRecord(target[key]) ? cloneJson(target[key]) : {}
+
+  for (const [entryKey, entryValue] of Object.entries(patch)) {
+    assignOptional(nextValue, entryKey, entryValue)
+  }
+
+  if (hasOwnValues(nextValue)) {
+    target[key] = nextValue
+  } else {
+    delete target[key]
+  }
+}
+
+function assignOptional(target: Record<string, unknown>, key: string, value: unknown) {
+  if (value === undefined || value === null || value === '') {
+    delete target[key]
+    return
+  }
+
+  target[key] = cloneJson(value)
+}
+
+function hasOwnValues(value: unknown) {
+  return isRecord(value) && Object.keys(value).length > 0
+}
+
+function schemeSelectionLabel(
+  selection: TerminalProfile['colorScheme'],
+  appearance: 'dark' | 'light',
+) {
+  if (!selection) {
+    return undefined
+  }
+
+  if (typeof selection === 'string') {
+    return selection
+  }
+
+  return selection[appearance] ?? selection.dark ?? selection.light
+}
+
+function readOptionalNumber(value: string) {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false
@@ -1682,6 +2484,203 @@ function ProfileGlyph({
   )
 }
 
+function SettingsSectionIcon({
+  section,
+}: {
+  section: SettingsSection
+}) {
+  if (section === 'appearance') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M2.75 4.25h10.5M4.25 8h7.5M5.75 11.75h4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.4"
+        />
+      </svg>
+    )
+  }
+
+  if (section === 'profiles') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M8 8.1a2.35 2.35 0 1 0 0-4.7 2.35 2.35 0 0 0 0 4.7Zm-4.3 4.2a4.3 4.3 0 0 1 8.6 0"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.4"
+        />
+      </svg>
+    )
+  }
+
+  if (section === 'json') {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path
+          d="M6.25 3.5 3.75 8l2.5 4.5M9.75 3.5 12.25 8l-2.5 4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.4"
+        />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="4"
+        width="11"
+        height="8"
+        rx="2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M5 7.1h1.2M7.4 7.1h1.2M9.8 7.1H11M5 9.5h3.6M9.4 9.5H11"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  )
+}
+
+function RailToggleIcon({
+  collapsed,
+}: {
+  collapsed: boolean
+}) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d={collapsed ? 'M6 3.75 10 8 6 12.25' : 'M10 3.75 6 8l4 4.25'}
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
+function SettingsGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 4.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M8 1.9v1.4M8 12.7v1.4M3.6 3.6l1 1M11.4 11.4l1 1M1.9 8h1.4M12.7 8h1.4M3.6 12.4l1-1M11.4 4.6l1-1"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.2"
+      />
+    </svg>
+  )
+}
+
+function CloseGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="m4.5 4.5 7 7m0-7-7 7"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  )
+}
+
+function NewTabGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 3.4v9.2M3.4 8h9.2"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
+function SplitVerticalGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="2.8"
+        y="3.3"
+        width="10.4"
+        height="9.4"
+        rx="1.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M8 3.8v8.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  )
+}
+
+function SplitHorizontalGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="2.8"
+        y="3.3"
+        width="10.4"
+        height="9.4"
+        rx="1.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M3.4 8h9.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+    </svg>
+  )
+}
+
+function CodeGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M6.25 4.2 3.9 8l2.35 3.8M9.75 4.2 12.1 8l-2.35 3.8M8.7 3.5 7.3 12.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.3"
+      />
+    </svg>
+  )
+}
+
 function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
   const lowerName = profile.name.toLowerCase()
   const lowerCommand = profile.commandline?.toLowerCase() ?? ''
@@ -1704,11 +2703,6 @@ function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
 
 function sessionTitle(session: SessionItem, profile: TerminalProfile) {
   return profile.tabTitle ?? session.title
-}
-
-function compactRailLabel(value: string) {
-  const compact = value.replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase()
-  return compact.length > 0 ? compact : 'TAB'
 }
 
 function resolveProfileIconSource(icon: string | undefined) {
@@ -1822,6 +2816,10 @@ function asOptionalActionCommand(value: unknown): TerminalActionCommand | undefi
 
 function asOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
+}
+
+function asOptionalNumberOrString(value: unknown): number | string | undefined {
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined
 }
 
 function asOptionalBoolean(value: unknown): boolean | undefined {

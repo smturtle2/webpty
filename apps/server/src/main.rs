@@ -462,6 +462,8 @@ struct TerminalProfileDefaults {
     cursor_shape: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    use_acrylic: Option<bool>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -488,6 +490,18 @@ struct TerminalProfile {
     tab_title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color_scheme: Option<SchemeSelection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    font_face: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    line_height: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cursor_shape: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    use_acrylic: Option<bool>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -2167,6 +2181,7 @@ fn default_settings() -> TerminalSettings {
                 line_height: Some(1.22),
                 cursor_shape: Some("bar".to_string()),
                 opacity: Some(92.0),
+                use_acrylic: None,
                 extra: JsonMap::new(),
             }),
             list: vec![
@@ -2181,6 +2196,12 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#3b78ff".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    font_face: None,
+                    font_size: None,
+                    line_height: None,
+                    cursor_shape: None,
+                    opacity: None,
+                    use_acrylic: None,
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2194,6 +2215,12 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#f0a355".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
+                    font_face: None,
+                    font_size: None,
+                    line_height: None,
+                    cursor_shape: None,
+                    opacity: None,
+                    use_acrylic: None,
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2210,6 +2237,12 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#2fbf9b".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    font_face: None,
+                    font_size: None,
+                    line_height: None,
+                    cursor_shape: None,
+                    opacity: None,
+                    use_acrylic: None,
                     extra: JsonMap::new(),
                 },
             ],
@@ -2316,6 +2349,12 @@ mod tests {
             tab_color: None,
             tab_title: Some("Admin".to_string()),
             color_scheme: None,
+            font_face: None,
+            font_size: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
             extra: JsonMap::new(),
         };
 
@@ -2336,6 +2375,12 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font_face: None,
+            font_size: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
             extra: JsonMap::new(),
         };
         let ubuntu = TerminalProfile {
@@ -2349,6 +2394,12 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font_face: None,
+            font_size: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
             extra: JsonMap::new(),
         };
         let custom = TerminalProfile {
@@ -2362,6 +2413,12 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font_face: None,
+            font_size: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
             extra: JsonMap::new(),
         };
 

@@ -295,7 +295,7 @@ function mapCursorShape(shape: TerminalCursorShape | undefined): 'block' | 'bar'
     return 'bar'
   }
 
-  if (shape === 'underscore' || shape === 'underline') {
+  if (shape === 'underscore' || shape === 'underline' || shape === 'doubleUnderscore') {
     return 'underline'
   }
 

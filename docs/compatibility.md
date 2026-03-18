@@ -25,13 +25,14 @@ Theme fields:
 - `window.useMica`
 - `tab.background`
 - `tab.unfocusedBackground`
-- `tab.showCloseButton`
+- `tab.showCloseButton` including `activeOnly`
 - `tabRow.background`
 - `tabRow.unfocusedBackground`
 
 Profile fields used by the UI/runtime:
 
 - `guid`
+- `font`
 - `name`
 - `icon`
 - `commandline`
@@ -43,9 +44,17 @@ Profile fields used by the UI/runtime:
 - `colorScheme`
 - `fontFace`
 - `fontSize`
+- `fontWeight`
+- `cellHeight`
 - `lineHeight`
 - `cursorShape`
 - `opacity`
+- `useAcrylic`
+- `foreground`
+- `background`
+- `cursorColor`
+- `selectionBackground`
+- `padding`
 
 Action fields currently mapped by the frontend:
 
@@ -61,6 +70,8 @@ Action fields currently mapped by the frontend:
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
 - the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
+- the in-app Theme Studio updates the selected `themes[]` entry and can also update `theme`
+- the in-app Profile Studio updates the selected `profiles.list[]` entry and can also update `defaultProfile`
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused

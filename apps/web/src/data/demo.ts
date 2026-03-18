@@ -15,7 +15,7 @@ export const demoSettings: TerminalSettings = {
       tab: {
         background: '#ffffff',
         unfocusedBackground: '#f5f5f5',
-        showCloseButton: 'hover',
+        showCloseButton: 'activeOnly',
       },
       tabRow: {
         background: '#f3f3f3',
@@ -62,8 +62,11 @@ export const demoSettings: TerminalSettings = {
   ],
   profiles: {
     defaults: {
-      fontFace: 'Cascadia Mono',
-      fontSize: 13,
+      font: {
+        face: 'Cascadia Mono',
+        size: 13,
+        cellHeight: 1.22,
+      },
       lineHeight: 1.22,
       cursorShape: 'bar',
       opacity: 92,

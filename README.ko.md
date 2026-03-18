@@ -9,7 +9,7 @@
 </div>
 
 `webpty`는 셸이 화면의 주인공이 되도록 설계되어 있습니다.
-터미널은 검은색으로 화면 대부분을 차지하고, 우측에는 얇고 밝은 세션 레일이
+터미널은 검은색으로 화면 대부분을 차지하고, 우측에는 얇은 세션 레일이
 붙어 있으며, 설정 패널은 그 레일에서 바로 열립니다. 실행 경로는 Rust 단일
 바이너리이고 `webpty up` 한 번으로 UI와 PTY 런타임을 함께 올립니다.
 
@@ -22,7 +22,9 @@
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
-![webpty settings panel](./docs/assets/webpty-studio.png)
+![webpty theme studio](./docs/assets/webpty-studio.png)
+
+![webpty profile studio](./docs/assets/webpty-profile-studio.png)
 
 ## 현재 상태
 
@@ -34,7 +36,9 @@
 - `webpty up --funnel` 외부 접속용 Tailscale Funnel
 - 상단 툴바 없이 검은 터미널 스테이지가 중심인 레이아웃
 - show/hide 가능한 우측 세션 레일
-- 흰색 플랫 탭과 섹션형 우측 고정 설정 드로어
+- 흰색 플랫 탭과 우측 고정 설정 드로어
+- `themes[]`와 `theme`를 바로 다루는 Theme Studio
+- `profiles.list[]`, 기본 프로필, 폰트/셸 필드를 바로 다루는 Profile Studio
 - schema 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
@@ -48,6 +52,7 @@
 
 - 더 깊은 pane graph, 드래그 재배치, 영속 pane 레이아웃
 - 탭 드래그 정렬
+- profile/theme 항목 생성·복제·삭제 흐름은 아직 `settings.json` 편집 의존
 - 현재 탭/설정 subset을 넘는 더 넓은 action object 지원
 - 모든 프로필 아이콘 URI 형식에 대한 완전한 호스트 자산 파리티
 - 앱 재시작 후 세션 복원

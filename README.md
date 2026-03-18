@@ -14,7 +14,7 @@
 </div>
 
 `webpty` keeps the shell in control of the screen.
-The terminal stays black and dominant, the session rail stays narrow and bright
+The terminal stays black and dominant, the session rail stays thin and bright
 on the right edge, the settings drawer opens from the rail, and the shipped
 binary runs the UI and PTY runtime together with `webpty up`.
 
@@ -26,7 +26,9 @@ accepts JSONC-style comments and trailing commas.
 
 ![webpty preview](./docs/assets/webpty-preview.png)
 
-![webpty settings panel](./docs/assets/webpty-studio.png)
+![webpty theme studio](./docs/assets/webpty-studio.png)
+
+![webpty profile studio](./docs/assets/webpty-profile-studio.png)
 
 ## Current Status
 
@@ -38,7 +40,9 @@ Implemented:
 - `webpty up --funnel` external access through Tailscale Funnel
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
-- white flat tab surfaces and a sectioned right-anchored settings drawer
+- white flat tab surfaces and a right-anchored settings drawer
+- dedicated Theme Studio for `themes[]`, `theme`, and shell surface editing
+- dedicated Profile Studio for `profiles.list[]`, default profile, and font/shell field editing
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel
@@ -52,6 +56,7 @@ Known gaps:
 
 - deeper pane graphs, drag rearranging, and persisted pane layouts
 - drag/drop tab ordering
+- create/duplicate/delete flows for profile and theme entries still rely on `settings.json`
 - broader action object coverage beyond the current tab/settings subset
 - host-local icon URI parity for every profile asset format
 - session restoration across app restarts

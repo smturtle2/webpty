@@ -3,10 +3,19 @@ export type SessionStatus = 'running' | 'idle' | 'attention'
 export type TerminalCursorShape =
   | 'filledBox'
   | 'bar'
+  | 'doubleUnderscore'
+  | 'emptyBox'
   | 'underscore'
   | 'vintage'
   | 'block'
   | 'underline'
+
+export interface TerminalFontSettings {
+  face?: string
+  size?: number
+  weight?: number | string
+  cellHeight?: number
+}
 
 export type ThemeSelection =
   | string
@@ -31,7 +40,7 @@ export interface TerminalTheme {
   }
   tab?: {
     background?: string
-    showCloseButton?: 'always' | 'hover' | 'never'
+    showCloseButton?: 'always' | 'hover' | 'never' | 'activeOnly'
     unfocusedBackground?: string
   }
   tabRow?: {
@@ -89,12 +98,20 @@ export interface TerminalProfile {
   tabColor?: string
   tabTitle?: string
   colorScheme?: SchemeSelection
+  font?: TerminalFontSettings
   fontFace?: string
   fontSize?: number
+  fontWeight?: number | string
   lineHeight?: number
+  cellHeight?: number
   cursorShape?: TerminalCursorShape
   opacity?: number
   useAcrylic?: boolean
+  foreground?: string
+  background?: string
+  cursorColor?: string
+  selectionBackground?: string
+  padding?: string | number
 }
 
 export interface TerminalSettings {
