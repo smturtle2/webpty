@@ -43,6 +43,7 @@
 - 탭, 프레임, 셸, 커서, 선택 영역 색상을 위한 인앱 color picker
 - `accent`, `terminalBackground` 같은 공용 테마 토큰을 바로 넣는 shortcut chip
 - 프롬프트, 탭 강조색, 셸 색을 즉시 확인할 수 있는 프로필 미리보기
+- `{cwd}`, `{user}`, `{host}`, `{profile}`, `{symbol}` 토큰을 쓰는 선택적 `webpty.prompt` 템플릿
 - schema 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원

@@ -47,6 +47,7 @@ Implemented:
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
 - token shortcut chips for shared theme color values such as `accent` and `terminalBackground`
 - live profile preview surface for prompt, tab accent, and shell color verification
+- optional `webpty.prompt` templates with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel

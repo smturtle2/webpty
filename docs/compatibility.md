@@ -57,6 +57,7 @@ Profile fields used by the UI/runtime:
 - `cursorColor`
 - `selectionBackground`
 - `padding`
+- optional `webpty.prompt` extension for explicit prompt templates
 
 Action fields currently mapped by the frontend:
 
@@ -77,6 +78,7 @@ Action fields currently mapped by the frontend:
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
 - theme and profile color fields also offer shortcut chips for shared token values such as `accent`, `terminalBackground`, `terminalForeground`, `cursorColor`, and `selectionBackground`
+- Profile Studio can edit `webpty.prompt` with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - Profile Studio and Theme Studio previews reuse the same profile-family prompt heuristics as the runtime shell launch path
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely

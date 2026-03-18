@@ -16,6 +16,7 @@ This pass checked the repo against the current product constraints:
 - rebuilt the embedded frontend bundle so the Rust runtime serves the current shell UI instead of stale assets
 - revalidated the runtime contracts that matter for this spec: `webpty up`, `webpty up --funnel`, shared settings loading, and per-profile prompt shaping
 - aligned the Studio prompt previews and local demo fallback transcripts with the runtime profile prompt rules
+- added explicit `webpty.prompt` template support with shared prompt tokens for profile-level prompt shaping
 - verified the color token shortcut chips now write usable shared token values into theme/profile fields
 - refreshed the documentation screenshots from the running app after the latest UI pass
 - aligned the docs with the current Theme Studio / Profile Studio naming that ships in the interface
