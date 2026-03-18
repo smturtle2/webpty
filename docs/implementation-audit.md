@@ -30,7 +30,7 @@ Confirmed in the current tree:
 
 - advanced pane graphs, drag reordering, and persisted layouts are still not shipped
 - action-object support remains focused on the current tab/settings subset
-- the settings workspace is flatter than before, but still not a byte-for-byte clone of the Windows 11 desktop shell chrome
+- the settings workspace still needs continued shell-chrome fidelity work to fully match the desktop target
 - automatic Tailscale install on Linux still depends on host privilege availability
 
 ## Verification Baseline
@@ -40,4 +40,5 @@ The current baseline should continue to satisfy:
 - `npm run build:web`
 - `cargo test --manifest-path apps/server/Cargo.toml`
 - `cargo check`
+- `npm run ui:smoke`
 - `npm run docs:shots`

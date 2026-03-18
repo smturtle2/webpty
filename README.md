@@ -67,6 +67,14 @@ Known gaps:
 
 - Rust 1.94+
 - Node.js 24+ and npm 11+ only when rebuilding the frontend bundle or working on the UI
+- Python 3.10+ only when running docs screenshot capture or `ui:smoke`
+
+Docs screenshot tooling dependencies:
+
+```bash
+python -m pip install -r requirements-docs.txt
+python -m playwright install chromium
+```
 
 ### Global Install
 
@@ -176,6 +184,7 @@ re-embeds updated frontend assets automatically.
 npm run build:web
 cargo test --manifest-path apps/server/Cargo.toml
 cargo check
+npm run ui:smoke
 npm run docs:shots
 ```
 
@@ -210,6 +219,7 @@ Rust runtime
 ## Documentation
 
 - [Implementation audit](./docs/implementation-audit.md)
+- [Development plan](./docs/development-plan.md)
 - [Compatibility notes](./docs/compatibility.md)
 - [Localization notes](./docs/localization.md)
 - [Research spec](./docs/research-spec.md)

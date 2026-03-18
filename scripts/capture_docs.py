@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -15,6 +16,15 @@ from playwright.sync_api import sync_playwright
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PORT = 4123
 READY_MARKER = "webpty ready on"
+SCREENSHOT_FILENAMES = (
+    "webpty-preview.png",
+    "webpty-studio.png",
+    "webpty-profile-studio.png",
+    "webpty-language-studio.png",
+    "webpty-settings-json.png",
+    "webpty-collapsed-rail.png",
+    "webpty-mobile-settings.png",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +39,11 @@ def parse_args() -> argparse.Namespace:
         "--out-dir",
         default="./docs/assets",
         help="output directory for generated screenshots",
+    )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="render screenshots into a temporary directory and only verify that capture succeeds",
     )
     return parser.parse_args()
 
@@ -101,28 +116,28 @@ def capture(base_url: str, out_dir: Path) -> None:
         page = browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=1)
         page.goto(base_url, wait_until="networkidle")
 
-        page.screenshot(path=str(out_dir / "webpty-preview.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[0]), full_page=True)
 
         page.get_by_role("tab", name="Settings").click()
         page.wait_for_timeout(200)
 
-        page.screenshot(path=str(out_dir / "webpty-studio.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[1]), full_page=True)
 
         page.get_by_role("button", name="Profile Studio").click()
         page.wait_for_timeout(200)
-        page.screenshot(path=str(out_dir / "webpty-profile-studio.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[2]), full_page=True)
 
         page.get_by_role("button", name="Language").click()
         page.wait_for_timeout(200)
-        page.screenshot(path=str(out_dir / "webpty-language-studio.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[3]), full_page=True)
 
         page.locator(".drawer-nav-item").filter(has_text="settings.json").first.click()
         page.wait_for_timeout(200)
-        page.screenshot(path=str(out_dir / "webpty-settings-json.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[4]), full_page=True)
 
         page.get_by_role("button", name="Hide session rail").click()
         page.wait_for_timeout(200)
-        page.screenshot(path=str(out_dir / "webpty-collapsed-rail.png"), full_page=True)
+        page.screenshot(path=str(out_dir / SCREENSHOT_FILENAMES[5]), full_page=True)
 
         mobile_page = browser.new_page(
             viewport={"width": 480, "height": 900}, device_scale_factor=1
@@ -131,21 +146,51 @@ def capture(base_url: str, out_dir: Path) -> None:
         mobile_page.get_by_role("tab", name="Settings").click()
         mobile_page.wait_for_timeout(200)
         mobile_page.screenshot(
-            path=str(out_dir / "webpty-mobile-settings.png"), full_page=True
+            path=str(out_dir / SCREENSHOT_FILENAMES[6]), full_page=True
         )
         mobile_page.close()
         browser.close()
 
 
+def verify_capture_outputs(out_dir: Path) -> None:
+    missing = []
+    empty = []
+    for filename in SCREENSHOT_FILENAMES:
+        path = out_dir / filename
+        if not path.exists():
+            missing.append(filename)
+            continue
+        if path.stat().st_size == 0:
+            empty.append(filename)
+
+    if missing or empty:
+        failures = []
+        if missing:
+            failures.append(f"missing: {', '.join(missing)}")
+        if empty:
+            failures.append(f"empty: {', '.join(empty)}")
+        raise RuntimeError(f"docs capture verification failed ({'; '.join(failures)})")
+
+
 def main() -> int:
     args = parse_args()
-    out_dir = (REPO_ROOT / args.out_dir).resolve()
+    temp_dir: tempfile.TemporaryDirectory[str] | None = None
+    if args.check_only:
+        temp_dir = tempfile.TemporaryDirectory(prefix="webpty-docs-check-")
+        out_dir = Path(temp_dir.name)
+    else:
+        out_dir = (REPO_ROOT / args.out_dir).resolve()
     base_url = f"http://127.0.0.1:{args.port}"
     process = start_server(args.port, args.settings)
     try:
         capture(base_url, out_dir)
+        verify_capture_outputs(out_dir)
+        if args.check_only:
+            print("docs capture smoke check passed")
     finally:
         stop_server(process)
+        if temp_dir is not None:
+            temp_dir.cleanup()
     return 0
 
 

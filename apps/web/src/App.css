@@ -1909,19 +1909,19 @@ select.field-input {
 }
 
 .terminal-shell {
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr) 28px;
 }
 
 .terminal-shell.is-rail-collapsed {
-  grid-template-columns: minmax(0, 1fr) 12px;
+  grid-template-columns: minmax(0, 1fr) 10px;
 }
 
 .settings-workspace {
-  background: #f3f3f3;
+  background: #f5f5f5;
 }
 
 .drawer-layout {
-  grid-template-columns: 212px minmax(0, 1fr);
+  grid-template-columns: 204px minmax(0, 1fr);
 }
 
 .drawer-header,
@@ -1937,61 +1937,67 @@ select.field-input {
 .drawer-nav-item,
 .drawer-status-card,
 .language-card {
-  border-radius: 6px;
+  border-radius: 4px;
+  border-color: #d9d9d9;
 }
 
 .drawer-header {
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: #f7f7f7;
 }
 
 .drawer-panel-stack {
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 10px 12px;
 }
 
 .drawer-panel,
 .drawer-section {
-  padding: 12px 14px;
+  padding: 12px;
+  background: #fcfcfc;
 }
 
 .drawer-nav {
-  padding: 12px 8px;
-  background: #f3f3f3;
+  gap: 3px;
+  padding: 10px 6px;
+  background: #f5f5f5;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .drawer-nav-item {
-  min-height: 54px;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .summary-card,
 .shortcut-row,
 .language-card {
-  padding: 12px;
+  padding: 10px 12px;
   background: #ffffff;
 }
 
 .studio-layout {
-  grid-template-columns: 224px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 212px minmax(0, 1fr);
+  gap: 10px;
 }
 
 .studio-list-item {
-  min-height: 62px;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 10px 12px;
+  min-height: 56px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px;
   background: #ffffff;
-  align-items: start;
+  align-items: center;
 }
 
 .studio-swatch,
 .theme-preview,
 .profile-preview-terminal {
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .theme-preview-terminal,
@@ -2002,13 +2008,13 @@ select.field-input {
 }
 
 .theme-preview {
-  background: #f7f7f7;
+  background: #f8f8f8;
 }
 
 .theme-preview-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
-  min-height: 132px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  min-height: 124px;
 }
 
 .theme-preview-stage {
@@ -2034,9 +2040,9 @@ select.field-input {
   width: min(240px, 100%);
   display: grid;
   gap: 4px;
-  padding: 10px 12px;
+  padding: 9px 10px;
   border: 1px solid var(--theme-preview-unfocused-frame, #cfcfcf);
-  border-radius: 8px;
+  border-radius: 6px;
   color: #111;
 }
 
@@ -2066,32 +2072,34 @@ select.field-input {
 .theme-preview-rail {
   display: grid;
   align-content: start;
-  gap: 3px;
-  padding: 5px 1px 5px 0;
+  gap: 2px;
+  padding: 4px 1px 4px 0;
   border-left: 1px solid
     color-mix(in srgb, var(--theme-preview-unfocused-frame, #d2d2d2) 72%, transparent);
 }
 
 .theme-preview-rail-toggle {
   justify-self: center;
-  width: 14px;
-  height: 24px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--theme-preview-unfocused-frame, #d2d2d2) 82%, white 18%);
+  width: 12px;
+  height: 22px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--theme-preview-unfocused-frame, #d2d2d2) 88%, white 12%);
 }
 
 .theme-preview-rail-tab {
-  min-height: 34px;
+  min-height: 30px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(17, 17, 17, 0.12);
   border-right: 0;
-  border-radius: 4px 0 0 4px;
+  border-radius: 3px 0 0 3px;
   color: #111;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .theme-preview-rail-tab.is-active {
-  box-shadow: inset 1px 0 0 rgba(17, 17, 17, 0.04);
+  background: #ffffff;
+  box-shadow: inset 1px 0 0 rgba(17, 17, 17, 0.03);
 }
 
 .theme-preview-rail-tab svg {
@@ -2113,17 +2121,18 @@ select.field-input {
 
 .field-input,
 .field-row-toggle {
-  min-height: 34px;
+  min-height: 32px;
 }
 
 .field-input,
 .field-color-shell,
 .field-row-toggle {
-  border-radius: 7px;
+  border-radius: 5px;
 }
 
 .settings-editor {
   min-height: 480px;
+  border-radius: 6px;
 }
 
 .language-layout {
@@ -2149,69 +2158,72 @@ select.field-input {
 }
 
 .language-card.is-active {
-  border-color: #b7b7b7;
-  box-shadow: inset 3px 0 0 var(--accent);
+  border-color: #cfcfcf;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .session-rail {
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 2px;
-  padding: 4px 0 4px 1px;
-  border-left: 1px solid #d7d7d7;
-  background: #f1f1f1;
+  gap: 1px;
+  padding: 3px 0 3px 1px;
+  border-left: 1px solid #d6d6d6;
+  background: #f3f3f3;
 }
 
 .rail-head,
 .rail-footer {
-  gap: 4px;
+  gap: 2px;
 }
 
 .rail-toggle,
 .rail-action {
-  min-height: 28px;
-  border-radius: 4px;
+  min-height: 22px;
+  border-radius: 3px;
   background: #ffffff;
+  border-color: #d6d6d6;
 }
 
 .rail-toggle svg,
 .rail-action svg {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .rail-tab {
-  min-height: 52px;
+  min-height: 46px;
   display: grid;
   justify-items: center;
   align-content: center;
   gap: 0;
-  padding: 6px 0;
-  border-radius: 4px 0 0 4px;
-  background: #f7f7f7;
+  padding: 5px 0;
+  border-radius: 3px 0 0 3px;
+  border-color: #d6d6d6;
+  background: #f8f8f8;
 }
 
 .rail-tab-shell.is-active .rail-tab {
   background: #ffffff;
+  border-color: #cacaca;
 }
 
 .rail-tab::before {
-  top: 6px;
-  bottom: 6px;
+  top: 5px;
+  bottom: 5px;
   width: 1px;
 }
 
 .rail-tab-status {
-  top: 5px;
-  right: 4px;
+  top: 4px;
+  right: 3px;
   width: 4px;
   height: 4px;
 }
 
 .rail-tab-icon .profile-glyph.is-compact {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  font-size: 7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  font-size: 6px;
 }
 
 .rail-tab-copy {
@@ -2219,29 +2231,31 @@ select.field-input {
 }
 
 .rail-tab-meta {
-  right: 4px;
-  bottom: 4px;
-  min-width: 11px;
-  height: 11px;
+  right: 3px;
+  bottom: 3px;
+  min-width: 10px;
+  height: 10px;
   padding: 0 3px;
-  font-size: 6px;
+  font-size: 5px;
 }
 
 .rail-tab-close {
   top: 1px;
   left: 1px;
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   border-radius: 999px;
+  border-color: #d6d6d6;
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .rail-tab-close svg {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 
 .session-rail.is-collapsed {
-  padding: 4px 0;
+  padding: 3px 0;
 }
 
 .session-rail.is-collapsed .rail-head {
@@ -2254,8 +2268,8 @@ select.field-input {
 }
 
 .session-rail.is-collapsed .rail-toggle {
-  width: 14px;
-  min-height: 30px;
+  width: 12px;
+  min-height: 26px;
   border-color: transparent;
   background: transparent;
 }
@@ -2323,11 +2337,11 @@ select.field-input {
 
 @media (max-width: 960px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: minmax(0, 1fr) 26px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 12px;
+    grid-template-columns: minmax(0, 1fr) 10px;
   }
 
   .drawer-layout,
@@ -2344,11 +2358,11 @@ select.field-input {
 
 @media (max-width: 640px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 28px;
+    grid-template-columns: minmax(0, 1fr) 24px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 12px;
+    grid-template-columns: minmax(0, 1fr) 10px;
   }
 
   .session-rail {
@@ -2356,7 +2370,7 @@ select.field-input {
   }
 
   .rail-tab {
-    min-height: 50px;
+    min-height: 44px;
   }
 
   .toolbar-button,
