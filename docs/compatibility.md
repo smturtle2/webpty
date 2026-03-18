@@ -2,8 +2,8 @@
 
 ## Goal
 
-`webpty` aims for practical interoperability with the shared terminal-profiles
-schema, not full schema parity.
+`webpty` aims for practical interoperability with the shared desktop-terminal
+`settings.json` shape, not full schema parity.
 
 ## Supported Fields
 
@@ -49,11 +49,9 @@ Profile fields used by the UI/runtime:
 
 Action fields currently mapped by the frontend:
 
-- `newTab`
-- `closeTab`
-- `nextTab`
-- `prevTab`
-- `openSettings`
+- string commands such as `"newTab"`
+- object commands with `command.action`, such as `{ "action": "newTab" }`
+- mapped actions currently include `newTab`, `closeTab`, `nextTab`, `prevTab`, and `openSettings`
 
 ## Runtime Behavior
 
@@ -62,6 +60,7 @@ Action fields currently mapped by the frontend:
 - if the settings file does not exist, `webpty` creates a default one
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
+- the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
@@ -72,13 +71,15 @@ Action fields currently mapped by the frontend:
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session
 - unsupported keys are preserved when the supported subset is loaded and saved again, including edits initiated from the in-app settings UI
+- browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
 
 ## Known Gaps
 
 - advanced pane graphs and persisted pane layouts
-- full action object support with nested arguments
+- full action object support beyond the current tab/settings subset
 - command palette and search surfaces
 - broader profile defaults coverage
+- host-local icon URI parity for every asset format
 - session restoration and persisted tab order
 
 ## Practical Expectation

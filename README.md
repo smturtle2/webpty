@@ -18,9 +18,9 @@ The terminal stays black and dominant, the session rail stays narrow and bright
 on the right edge, the settings drawer opens from the rail, and the shipped
 binary runs the UI and PTY runtime together with `webpty up`.
 
-Profiles, themes, schemes, actions, and defaults use the same `settings.json`
-shape as the established terminal-profiles schema. Unknown keys are preserved on
-save, and disk loading now accepts JSONC-style comments and trailing commas.
+Profiles, themes, schemes, actions, and defaults use a shared desktop-terminal
+`settings.json` shape. Unknown keys are preserved on save, and disk loading now
+accepts JSONC-style comments and trailing commas.
 
 ## Preview
 
@@ -38,19 +38,22 @@ Implemented:
 - `webpty up --funnel` external access through Tailscale Funnel
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
-- white flat tab surfaces and right-anchored settings drawer
+- white flat tab surfaces and a sectioned right-anchored settings drawer
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
+- JSONC-style editing in the in-app `settings.json` panel
+- string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
 - per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
 - vertical and horizontal split creation inside the active tab
 - WebSocket input/output streaming and PTY resize handling
+- browser-safe profile icon sources rendered in the rail and settings panel
 
 Known gaps:
 
 - deeper pane graphs, drag rearranging, and persisted pane layouts
 - drag/drop tab ordering
-- broader action object coverage
-- full icon URI parity for every profile asset format
+- broader action object coverage beyond the current tab/settings subset
+- host-local icon URI parity for every profile asset format
 - session restoration across app restarts
 
 ## Quick Start

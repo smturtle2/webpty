@@ -420,10 +420,17 @@ struct TerminalTabRowTheme {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum TerminalActionCommand {
+    Named(String),
+    Structured(JsonMap<String, JsonValue>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminalAction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    command: Option<String>,
+    command: Option<TerminalActionCommand>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     keys: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2123,31 +2130,31 @@ fn default_settings() -> TerminalSettings {
         ],
         actions: vec![
             TerminalAction {
-                command: Some("newTab".to_string()),
+                command: Some(TerminalActionCommand::Named("newTab".to_string())),
                 keys: vec!["ctrl+t".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
             TerminalAction {
-                command: Some("closeTab".to_string()),
+                command: Some(TerminalActionCommand::Named("closeTab".to_string())),
                 keys: vec!["ctrl+w".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
             TerminalAction {
-                command: Some("nextTab".to_string()),
+                command: Some(TerminalActionCommand::Named("nextTab".to_string())),
                 keys: vec!["ctrl+tab".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
             TerminalAction {
-                command: Some("prevTab".to_string()),
+                command: Some(TerminalActionCommand::Named("prevTab".to_string())),
                 keys: vec!["ctrl+shift+tab".to_string()],
                 name: None,
                 extra: JsonMap::new(),
             },
             TerminalAction {
-                command: Some("openSettings".to_string()),
+                command: Some(TerminalActionCommand::Named("openSettings".to_string())),
                 keys: vec!["ctrl+,".to_string()],
                 name: None,
                 extra: JsonMap::new(),
@@ -2440,6 +2447,50 @@ mod tests {
             settings.default_profile,
             "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}"
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_settings_accepts_object_form_actions() {
+        let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
+        let fixture = r#"
+        {
+          "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+          "actions": [
+            {
+              "command": {
+                "action": "openSettings",
+                "target": "settingsUI"
+              },
+              "keys": ["ctrl+,"]
+            }
+          ],
+          "profiles": {
+            "list": [
+              {
+                "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+                "name": "PowerShell",
+                "commandline": "pwsh.exe"
+              }
+            ]
+          }
+        }
+        "#;
+
+        fs::write(&path, fixture).expect("fixture should be written");
+        let settings = load_settings(&path).expect("object-form actions should load");
+        let action = settings.actions.first().expect("action should exist");
+
+        match action.command.as_ref() {
+            Some(TerminalActionCommand::Structured(command)) => {
+                assert_eq!(
+                    command.get("action").and_then(JsonValue::as_str),
+                    Some("openSettings")
+                );
+            }
+            other => panic!("unexpected action command: {other:?}"),
+        }
+
         let _ = fs::remove_file(path);
     }
 

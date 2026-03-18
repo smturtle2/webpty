@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type MutableRefObject,
 } from 'react'
+import JSON5 from 'json5'
 import './App.css'
 import { TerminalViewport } from './components/TerminalViewport'
 import { demoHealth, demoSessions, demoSettings } from './data/demo'
@@ -20,12 +21,12 @@ import {
   resolveThemeName,
   resolveUiTheme,
   resolveWindowAppearance,
-  sessionLabel,
 } from './lib/terminalProfiles'
 import type {
   ServerHealth,
   SessionItem,
   TerminalAction,
+  TerminalActionCommand,
   TerminalProfile,
   TerminalSettings,
   UiThemeTokens,
@@ -36,6 +37,7 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type PaneLayout = 'single' | 'vertical' | 'horizontal'
 type SupportedActionCommand = 'newTab' | 'closeTab' | 'nextTab' | 'prevTab' | 'openSettings'
 type ActionBindings = Record<SupportedActionCommand, string[]>
+type SettingsSection = 'appearance' | 'profiles' | 'json' | 'shortcuts'
 
 interface WorkspaceTab {
   id: string
@@ -52,6 +54,12 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
 }
 
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
+const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
+  { id: 'appearance', label: 'Appearance', meta: 'Theme and live shell surface' },
+  { id: 'profiles', label: 'Profiles', meta: 'Launch and default profile' },
+  { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
+  { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
+]
 
 function App() {
   const [settings, setSettings] = useState<TerminalSettings>(demoSettings)
@@ -67,6 +75,8 @@ function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline')
   const [systemAppearance, setSystemAppearance] = useState<'dark' | 'light'>(resolveAppearance())
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [activeSettingsSection, setActiveSettingsSection] =
+    useState<SettingsSection>('appearance')
   const [isRailCollapsed, setIsRailCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem(RAIL_COLLAPSED_STORAGE_KEY) === 'true'
@@ -126,6 +136,8 @@ function App() {
           ? 'error'
           : 'idle'
   const runtimeMessage = isBooting ? 'Syncing runtime contracts…' : serverHealth.message
+  const settingsSectionMeta =
+    SETTINGS_SECTIONS.find((section) => section.id === activeSettingsSection) ?? SETTINGS_SECTIONS[0]
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -458,6 +470,7 @@ function App() {
     if (matchesAction(event, actionBindings.openSettings)) {
       event.preventDefault()
       setIsRailCollapsed(false)
+      setActiveSettingsSection('appearance')
       setIsSettingsOpen((current) => !current)
       return true
     }
@@ -544,9 +557,10 @@ function App() {
     setIsRailCollapsed((current) => !current)
   }
 
-  function toggleSettings() {
+  function revealSettings(section: SettingsSection) {
     setIsRailCollapsed(false)
-    setIsSettingsOpen((current) => !current)
+    setActiveSettingsSection(section)
+    setIsSettingsOpen(true)
   }
 
   return (
@@ -561,6 +575,10 @@ function App() {
               {visiblePaneSessions.map((session) => {
                 const profile = resolveProfile(settings, session.profileId)
                 const scheme = resolveScheme(settings, profile, uiAppearance)
+                const viewportScheme = {
+                  ...scheme,
+                  background: applyColorOpacity(scheme.background, profile.opacity ?? 100),
+                }
                 const isFocusedPane = session.id === activeSessionId && !isSettingsOpen
 
                 return (
@@ -568,6 +586,12 @@ function App() {
                     key={`${session.id}-${canConnect ? 'live' : 'offline'}`}
                     className={`pane-shell ${isFocusedPane ? 'is-active' : ''}`}
                     aria-label={`${sessionTitle(session, profile)} pane`}
+                    style={
+                      {
+                        '--pane-terminal-bg': viewportScheme.background,
+                        '--pane-terminal-blur': profile.useAcrylic ? '18px' : '0px',
+                      } as CSSProperties
+                    }
                     onMouseDown={() => activateSession(session.id)}
                   >
                     <div className="pane-frame" aria-hidden="true" />
@@ -588,7 +612,7 @@ function App() {
                       onConnectionStateChange={handleConnectionStateChange}
                       onShortcut={handleShortcut}
                       onTranscriptChange={handleTranscriptChange}
-                      scheme={scheme}
+                      scheme={viewportScheme}
                       sessionId={session.id}
                     />
                   </section>
@@ -611,8 +635,8 @@ function App() {
               <div className="drawer-header">
                 <div>
                   <span className="header-label">Settings</span>
-                  <strong>Profiles, themes, JSON</strong>
-                  <p>{runtimeMessage}</p>
+                  <strong>{settingsSectionMeta.label}</strong>
+                  <p>{settingsSectionMeta.meta}</p>
                 </div>
                 <div className="drawer-header-actions">
                   <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
@@ -631,161 +655,223 @@ function App() {
                 </div>
               </div>
 
-              <section className="drawer-overview" aria-label="Shell overview">
-                <article className="summary-card">
-                  <span className="header-label">Default</span>
-                  <strong>{defaultProfile.name}</strong>
-                  <span>{defaultProfile.commandline ?? 'default shell'}</span>
-                </article>
-                <article className="summary-card">
-                  <span className="header-label">Theme</span>
-                  <strong>{themeName}</strong>
-                  <span>{activeScheme.name}</span>
-                </article>
-                <article className="summary-card">
-                  <span className="header-label">Focused</span>
-                  <strong>{activeTabLabel}</strong>
-                  <span>
-                    {currentTab.paneIds.length > 1
-                      ? `${currentTab.paneIds.length} panes · ${activeSession.cwd}`
-                      : activeSession.cwd}
-                  </span>
-                </article>
-              </section>
+              <div className="drawer-layout">
+                <nav className="drawer-nav" aria-label="Settings sections">
+                  {SETTINGS_SECTIONS.map((section) => (
+                    <button
+                      key={section.id}
+                      type="button"
+                      className={`drawer-nav-item ${
+                        activeSettingsSection === section.id ? 'is-active' : ''
+                      }`}
+                      onClick={() => setActiveSettingsSection(section.id)}
+                    >
+                      <strong>{section.label}</strong>
+                      <span>{section.meta}</span>
+                    </button>
+                  ))}
 
-              <section className="drawer-section">
-                <div className="section-heading">
-                  <strong>Appearance</strong>
-                  <p>Keep the shell dark, the rail bright, and the chrome flat.</p>
-                </div>
+                  <article className="drawer-status-card" aria-label="Shell overview">
+                    <span className="header-label">Focused</span>
+                    <strong>{activeTabLabel}</strong>
+                    <span>
+                      {currentTab.paneIds.length > 1
+                        ? `${currentTab.paneIds.length} panes · ${activeSession.cwd}`
+                        : activeSession.cwd}
+                    </span>
+                    <span>{runtimeMessage}</span>
+                  </article>
+                </nav>
 
-                <div className="theme-grid">
-                  {settings.themes?.map((theme) => {
-                    const previewTheme = resolveUiTheme(
-                      { ...settings, theme: theme.name },
-                      activeProfile,
-                      uiAppearance,
-                    )
+                <div className="drawer-panel-stack">
+                  {activeSettingsSection === 'appearance' ? (
+                    <section className="drawer-panel">
+                      <div className="section-heading">
+                        <strong>Shell surface</strong>
+                        <p>Black terminal stage, white tab strip, and flat chrome sourced from the shared theme definition.</p>
+                      </div>
 
-                    return (
-                      <button
-                        key={theme.name}
-                        type="button"
-                        className={`theme-chip ${theme.name === themeName ? 'is-active' : ''}`}
-                        style={
-                          {
-                            '--chip-accent': previewTheme.chrome,
-                            '--chip-tone': previewTheme.panel,
-                          } as CSSProperties
-                        }
-                        onClick={() => void handleThemeApply(theme.name)}
-                      >
-                        <span className="theme-chip-swatch" />
-                        <span>{theme.name}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-
-              <section className="drawer-section">
-                <div className="section-heading">
-                  <strong>Profiles</strong>
-                  <p>Launch immediately or promote a profile to the default slot.</p>
-                </div>
-
-                <div className="profile-grid">
-                  {visibleProfiles.map((profile) => {
-                    const isDefault = profile.id === defaultProfile.id
-
-                    return (
-                      <article
-                        key={profile.id}
-                        className={`profile-card ${isDefault ? 'is-default' : ''}`}
-                      >
-                        <div className="profile-card-head">
-                          <div>
-                            <strong>{profile.name}</strong>
-                            <p>{profile.commandline ?? 'Default commandline'}</p>
-                          </div>
-                          <span className="profile-badge">
-                            {isDefault ? 'default' : profile.cursorShape ?? 'bar'}
+                      <section className="drawer-overview" aria-label="Appearance overview">
+                        <article className="summary-card">
+                          <span className="header-label">Default</span>
+                          <strong>{defaultProfile.name}</strong>
+                          <span>{defaultProfile.commandline ?? 'default shell'}</span>
+                        </article>
+                        <article className="summary-card">
+                          <span className="header-label">Theme</span>
+                          <strong>{themeName}</strong>
+                          <span>{activeScheme.name}</span>
+                        </article>
+                        <article className="summary-card">
+                          <span className="header-label">Profile</span>
+                          <strong>{activeProfile.name}</strong>
+                          <span>
+                            {activeProfile.fontFace ?? 'Cascadia Mono'} ·{' '}
+                            {activeProfile.fontSize ?? 13}px
                           </span>
+                        </article>
+                      </section>
+
+                      <section className="drawer-section">
+                        <div className="section-heading">
+                          <strong>Themes</strong>
+                          <p>Apply the shared theme name exactly as it appears in `settings.json`.</p>
                         </div>
-                        <span>
-                          {profile.startingDirectory ?? '~'} · {profile.fontFace ?? 'Cascadia Mono'}
-                        </span>
 
-                        <div className="profile-card-actions">
-                          <button
-                            type="button"
-                            className="toolbar-button"
-                            onClick={() => void createSession(profile.id)}
-                          >
-                            Launch
-                          </button>
-                          <button
-                            type="button"
-                            className="toolbar-button ghost"
-                            onClick={() => void handleDefaultProfileSelect(profile.id)}
-                            disabled={isDefault}
-                          >
-                            Set default
-                          </button>
+                        <div className="theme-grid">
+                          {settings.themes?.map((theme) => {
+                            const previewTheme = resolveUiTheme(
+                              { ...settings, theme: theme.name },
+                              activeProfile,
+                              uiAppearance,
+                            )
+
+                            return (
+                              <button
+                                key={theme.name}
+                                type="button"
+                                className={`theme-chip ${
+                                  theme.name === themeName ? 'is-active' : ''
+                                }`}
+                                style={
+                                  {
+                                    '--chip-accent': previewTheme.chrome,
+                                    '--chip-tone': previewTheme.panel,
+                                  } as CSSProperties
+                                }
+                                onClick={() => void handleThemeApply(theme.name)}
+                              >
+                                <span className="theme-chip-swatch" />
+                                <span>{theme.name}</span>
+                              </button>
+                            )
+                          })}
                         </div>
-                      </article>
-                    )
-                  })}
+                      </section>
+                    </section>
+                  ) : null}
+
+                  {activeSettingsSection === 'profiles' ? (
+                    <section className="drawer-panel">
+                      <div className="section-heading">
+                        <strong>Profiles</strong>
+                        <p>Launch a new tab or promote one profile as the default startup target.</p>
+                      </div>
+
+                      <div className="profile-grid">
+                        {visibleProfiles.map((profile) => {
+                          const isDefault = profile.id === defaultProfile.id
+
+                          return (
+                            <article
+                              key={profile.id}
+                              className={`profile-card ${isDefault ? 'is-default' : ''}`}
+                            >
+                              <div className="profile-card-head">
+                                <div className="profile-card-identity">
+                                  <ProfileGlyph profile={profile} />
+                                  <div>
+                                    <strong>{profile.name}</strong>
+                                    <p>{profile.commandline ?? 'Default commandline'}</p>
+                                  </div>
+                                </div>
+                                <span className="profile-badge">
+                                  {isDefault ? 'default' : profile.cursorShape ?? 'bar'}
+                                </span>
+                              </div>
+                              <span>
+                                {profile.startingDirectory ?? '~'} ·{' '}
+                                {profile.fontFace ?? 'Cascadia Mono'}
+                              </span>
+
+                              <div className="profile-card-actions">
+                                <button
+                                  type="button"
+                                  className="toolbar-button"
+                                  onClick={() => void createSession(profile.id)}
+                                >
+                                  Launch
+                                </button>
+                                <button
+                                  type="button"
+                                  className="toolbar-button ghost"
+                                  onClick={() => void handleDefaultProfileSelect(profile.id)}
+                                  disabled={isDefault}
+                                >
+                                  Set default
+                                </button>
+                              </div>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSettingsSection === 'json' ? (
+                    <section className="drawer-panel studio-editor">
+                      <div className="section-heading">
+                        <strong>settings.json</strong>
+                        <p>Comments and trailing commas stay valid in the editor, and unknown keys continue to round-trip.</p>
+                      </div>
+
+                      <textarea
+                        className="settings-editor"
+                        spellCheck={false}
+                        value={settingsDraft}
+                        onChange={(event) => {
+                          setSettingsDraft(event.target.value)
+                          setSettingsError(null)
+                          if (saveState !== 'saving') {
+                            setSaveState('idle')
+                          }
+                        }}
+                      />
+
+                      {settingsError ? <p className="settings-error">{settingsError}</p> : null}
+
+                      <div className="editor-actions">
+                        <button
+                          type="button"
+                          className="toolbar-button"
+                          onClick={() => void handleSettingsSave()}
+                          disabled={!isDraftDirty}
+                        >
+                          Save settings
+                        </button>
+                        <button
+                          type="button"
+                          className="toolbar-button ghost"
+                          onClick={handleSettingsReset}
+                        >
+                          Reset draft
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeSettingsSection === 'shortcuts' ? (
+                    <section className="drawer-panel">
+                      <div className="section-heading">
+                        <strong>Shortcuts</strong>
+                        <p>Resolved from the shared `actions[]` payload, including object-form commands.</p>
+                      </div>
+
+                      <section className="shortcut-list" aria-label="Keyboard shortcuts">
+                        {shortcutSummary.map((shortcut) => (
+                          <article
+                            key={`${shortcut.command}-${shortcut.keys}`}
+                            className="shortcut-row"
+                          >
+                            <strong>{shortcut.command}</strong>
+                            <span className="shortcut-pill">{shortcut.keys}</span>
+                          </article>
+                        ))}
+                      </section>
+                    </section>
+                  ) : null}
                 </div>
-              </section>
-
-              <section className="drawer-section studio-editor">
-                <div className="section-heading">
-                  <strong>settings.json</strong>
-                  <p>Round-trip preserves unknown keys while the UI edits the supported profile subset.</p>
-                </div>
-
-                <textarea
-                  className="settings-editor"
-                  spellCheck={false}
-                  value={settingsDraft}
-                  onChange={(event) => {
-                    setSettingsDraft(event.target.value)
-                    setSettingsError(null)
-                    if (saveState !== 'saving') {
-                      setSaveState('idle')
-                    }
-                  }}
-                />
-
-                {settingsError ? <p className="settings-error">{settingsError}</p> : null}
-
-                <div className="editor-actions">
-                  <button
-                    type="button"
-                    className="toolbar-button"
-                    onClick={() => void handleSettingsSave()}
-                    disabled={!isDraftDirty}
-                  >
-                    Save settings
-                  </button>
-                  <button
-                    type="button"
-                    className="toolbar-button ghost"
-                    onClick={handleSettingsReset}
-                  >
-                    Reset draft
-                  </button>
-                </div>
-              </section>
-
-              <section className="drawer-shortcuts" aria-label="Keyboard shortcuts">
-                {shortcutSummary.map((shortcut) => (
-                  <span key={`${shortcut.command}-${shortcut.keys}`} className="shortcut-pill">
-                    {shortcut.command}: {shortcut.keys}
-                  </span>
-                ))}
-              </section>
+              </div>
             </aside>
           </div>
         </section>
@@ -795,16 +881,27 @@ function App() {
           data-close-mode={closeButtonMode}
           aria-label="Session rail"
         >
-          <button
-            type="button"
-            className="rail-toggle"
-            aria-label={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
-            onClick={toggleRail}
-            title={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
-          >
-            <span>{isRailCollapsed ? '<' : '>'}</span>
-            <small>{isRailCollapsed ? 'show' : 'hide'}</small>
-          </button>
+          <div className="rail-head">
+            <button
+              type="button"
+              className="rail-toggle"
+              aria-label={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+              onClick={toggleRail}
+              title={isRailCollapsed ? 'Show session rail' : 'Hide session rail'}
+            >
+              <span>{isRailCollapsed ? '<' : '>'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`rail-action rail-action-settings ${isSettingsOpen ? 'is-active' : ''}`}
+              aria-label="Open settings"
+              title="Open settings"
+              onClick={() => revealSettings('appearance')}
+            >
+              <span>cfg</span>
+            </button>
+          </div>
 
           <div className="rail-list" role="tablist" aria-label="Sessions">
             {tabs.map((tab) => {
@@ -813,10 +910,6 @@ function App() {
               const profile = resolveProfile(settings, primarySession.profileId)
               const tabLabel = tabLabelForTab(tab, sessions, settings)
               const isActive = tab.id === currentTab.id
-              const tabMeta =
-                tab.paneIds.length > 1
-                  ? `${tab.paneIds.length} panes`
-                  : sessionLabel(primarySession, activeSession.id)
 
               return (
                 <div
@@ -839,12 +932,13 @@ function App() {
                     <span
                       className={`rail-tab-status rail-tab-status-${primarySession.status}`}
                     />
-                    <span className="rail-tab-icon">{profileBadge(profile)}</span>
-                    <span className="rail-tab-copy">
-                      <strong>{tabLabel}</strong>
-                      <span>{profile.name}</span>
+                    <span className="rail-tab-icon">
+                      <ProfileGlyph profile={profile} compact />
                     </span>
-                    <span className="rail-tab-meta">{tabMeta}</span>
+                    <span className="rail-tab-copy">{compactRailLabel(tabLabel)}</span>
+                    {tab.paneIds.length > 1 ? (
+                      <span className="rail-tab-meta">{tab.paneIds.length}</span>
+                    ) : null}
                   </button>
 
                   {closeButtonMode !== 'never' ? (
@@ -852,7 +946,7 @@ function App() {
                       type="button"
                       className="rail-tab-close"
                       onClick={() => void closeTab(tab.id)}
-                      aria-label={`${tabLabel} 닫기`}
+                      aria-label={`Close ${tabLabel}`}
                     >
                       ×
                     </button>
@@ -871,7 +965,6 @@ function App() {
               onClick={() => void createSession()}
             >
               <span>+</span>
-              <small>new</small>
             </button>
             <button
               type="button"
@@ -881,8 +974,7 @@ function App() {
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'vertical')}
             >
-              <span>vs</span>
-              <small>split</small>
+              <span>|</span>
             </button>
             <button
               type="button"
@@ -892,18 +984,16 @@ function App() {
               disabled={!canSplitActiveTab}
               onClick={() => void createSession(activeProfile.id, 'horizontal')}
             >
-              <span>hs</span>
-              <small>split</small>
+              <span>-</span>
             </button>
             <button
               type="button"
               className={`rail-action ${isSettingsOpen ? 'is-active' : ''}`}
-              aria-label="Open settings"
-              title="Open settings"
-              onClick={toggleSettings}
+              aria-label="Edit settings.json"
+              title="Edit settings.json"
+              onClick={() => revealSettings('json')}
             >
-              <span>cfg</span>
-              <small>{isSettingsOpen ? 'open' : 'settings'}</small>
+              <span>js</span>
             </button>
           </div>
         </aside>
@@ -991,7 +1081,7 @@ function normalizeSettings(payload: unknown): TerminalSettings {
       ? payload.actions
           .filter(isRecord)
           .map((action) => ({
-            command: asOptionalString(action.command),
+            command: asOptionalActionCommand(action.command),
             name: asOptionalString(action.name),
             keys: asStringArray(action.keys, []),
           }))
@@ -1399,12 +1489,19 @@ function applyThemeSelection(
   }
 }
 
-function normalizeActionCommand(command: string | undefined): SupportedActionCommand | null {
-  if (!command) {
+function normalizeActionCommand(command: TerminalActionCommand | undefined): SupportedActionCommand | null {
+  const rawCommand =
+    typeof command === 'string'
+      ? command
+      : isRecord(command)
+        ? asOptionalString(command.action)
+        : undefined
+
+  if (!rawCommand) {
     return null
   }
 
-  const normalized = command.replace(/[-_\s]/g, '').toLowerCase()
+  const normalized = rawCommand.replace(/[-_\s]/g, '').toLowerCase()
 
   if (normalized === 'newtab') {
     return 'newTab'
@@ -1490,7 +1587,7 @@ function normalizeKeyToken(value: string) {
 }
 
 function parseSettingsDraft(draft: string) {
-  const parsed = JSON.parse(draft) as unknown
+  const parsed = JSON5.parse(draft) as unknown
 
   if (!isRecord(parsed) || !isRecord(parsed.profiles) || !Array.isArray(parsed.profiles.list)) {
     throw new Error('invalid settings payload')
@@ -1559,6 +1656,32 @@ function isBadgeText(value: string) {
   )
 }
 
+function ProfileGlyph({
+  profile,
+  compact = false,
+}: {
+  profile: TerminalProfile
+  compact?: boolean
+}) {
+  const [didError, setDidError] = useState(false)
+  const iconSource = !didError ? resolveProfileIconSource(profile.icon) : null
+
+  return (
+    <span className={`profile-glyph ${compact ? 'is-compact' : ''}`}>
+      {iconSource ? (
+        <img
+          src={iconSource}
+          alt=""
+          loading="lazy"
+          onError={() => setDidError(true)}
+        />
+      ) : (
+        profileBadge(profile)
+      )}
+    </span>
+  )
+}
+
 function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
   const lowerName = profile.name.toLowerCase()
   const lowerCommand = profile.commandline?.toLowerCase() ?? ''
@@ -1581,6 +1704,79 @@ function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
 
 function sessionTitle(session: SessionItem, profile: TerminalProfile) {
   return profile.tabTitle ?? session.title
+}
+
+function compactRailLabel(value: string) {
+  const compact = value.replace(/[^a-z0-9]/gi, '').slice(0, 3).toUpperCase()
+  return compact.length > 0 ? compact : 'TAB'
+}
+
+function resolveProfileIconSource(icon: string | undefined) {
+  if (!icon) {
+    return null
+  }
+
+  const trimmed = icon.trim()
+  if (trimmed.length === 0 || isBadgeText(trimmed)) {
+    return null
+  }
+
+  if (
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../')
+  ) {
+    return trimmed
+  }
+
+  return null
+}
+
+function applyColorOpacity(value: string, opacity = 100) {
+  const normalizedOpacity = Math.min(100, Math.max(0, opacity))
+  if (normalizedOpacity >= 100) {
+    return value
+  }
+
+  const parsed = parseHexColor(value)
+  if (!parsed) {
+    return value
+  }
+
+  return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${Number(
+    (normalizedOpacity / 100).toFixed(3),
+  )})`
+}
+
+function parseHexColor(value: string) {
+  const normalized = value.trim()
+
+  if (!normalized.startsWith('#')) {
+    return null
+  }
+
+  const hex = normalized.slice(1)
+
+  if (hex.length === 3) {
+    return {
+      r: Number.parseInt(`${hex[0]}${hex[0]}`, 16),
+      g: Number.parseInt(`${hex[1]}${hex[1]}`, 16),
+      b: Number.parseInt(`${hex[2]}${hex[2]}`, 16),
+    }
+  }
+
+  if (hex.length !== 6) {
+    return null
+  }
+
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  }
 }
 
 function resolveAppearance(): 'dark' | 'light' {
@@ -1610,6 +1806,18 @@ function asString(value: unknown, fallback: string): string {
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
+}
+
+function asOptionalActionCommand(value: unknown): TerminalActionCommand | undefined {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  if (isRecord(value)) {
+    return cloneJson(value)
+  }
+
+  return undefined
 }
 
 function asOptionalNumber(value: unknown): number | undefined {

@@ -7,8 +7,10 @@ This package contains the React/Vite frontend for `webpty`.
 - render the terminal-dominant shell layout
 - keep the thin right-side session rail in sync with runtime sessions
 - support rail show/hide and split creation without adding top chrome
-- present a desktop-style settings panel without adding top chrome
+- present a sectioned right-side settings panel without adding top chrome
 - load and save the shared settings schema subset
+- accept JSONC-style comments and trailing commas in the in-app editor
+- resolve both string and object-form action commands from `actions[]`
 - connect the active viewport to the Rust PTY backend over WebSocket
 
 ## Development

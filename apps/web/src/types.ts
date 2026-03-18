@@ -40,8 +40,15 @@ export interface TerminalTheme {
   }
 }
 
+export type TerminalActionCommand =
+  | string
+  | {
+      action?: string
+      [key: string]: unknown
+    }
+
 export interface TerminalAction {
-  command?: string
+  command?: TerminalActionCommand
   keys?: string[]
   name?: string
 }

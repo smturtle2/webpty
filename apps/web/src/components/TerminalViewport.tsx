@@ -12,6 +12,7 @@ interface TerminalViewportProps {
   fontFamily: string
   fontSize: number
   lineHeight: number
+  opacity?: number
   cursorShape: TerminalCursorShape | undefined
   scheme: TerminalColorScheme
   onConnectionStateChange: (
@@ -30,6 +31,7 @@ export function TerminalViewport({
   fontFamily,
   fontSize,
   lineHeight,
+  opacity,
   cursorShape,
   scheme,
   onConnectionStateChange,
@@ -179,13 +181,13 @@ export function TerminalViewport({
       return
     }
 
-    term.options.theme = toXtermTheme(scheme)
+    term.options.theme = toXtermTheme(scheme, opacity)
     term.options.fontFamily = fontFamily
     term.options.fontSize = fontSize
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
     scheduleSyncSize()
-  }, [cursorShape, fontFamily, fontSize, lineHeight, scheme])
+  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, scheme])
 
   useEffect(() => {
     if (!active) {
@@ -302,7 +304,7 @@ function mapCursorShape(shape: TerminalCursorShape | undefined): 'block' | 'bar'
 
 function buildSocketUrl(sessionId: string) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const host = import.meta.env.DEV ? `${window.location.hostname}:3001` : window.location.host
+  const host = window.location.host
 
   return `${protocol}//${host}/ws/${encodeURIComponent(sessionId)}`
 }
@@ -322,9 +324,9 @@ function parseMessage(
   }
 }
 
-function toXtermTheme(scheme: TerminalColorScheme) {
+function toXtermTheme(scheme: TerminalColorScheme, opacity?: number) {
   return {
-    background: scheme.background,
+    background: applyOpacity(scheme.background, opacity),
     foreground: scheme.foreground,
     cursor: scheme.cursorColor ?? scheme.foreground,
     cursorAccent: scheme.background,
@@ -345,5 +347,48 @@ function toXtermTheme(scheme: TerminalColorScheme) {
     brightMagenta: scheme.brightPurple ?? '#b4009e',
     brightCyan: scheme.brightCyan ?? '#61d6d6',
     brightWhite: scheme.brightWhite ?? '#f2f2f2',
+  }
+}
+
+function applyOpacity(color: string, opacity = 100) {
+  if (opacity >= 100) {
+    return color
+  }
+
+  const normalized = color.trim()
+  const value = Math.min(100, Math.max(0, opacity)) / 100
+
+  if (normalized.startsWith('#')) {
+    const parsed = parseHex(normalized)
+
+    if (!parsed) {
+      return color
+    }
+
+    return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${value})`
+  }
+
+  return color
+}
+
+function parseHex(color: string) {
+  const hex = color.slice(1)
+
+  if (hex.length === 3) {
+    return {
+      r: Number.parseInt(`${hex[0]}${hex[0]}`, 16),
+      g: Number.parseInt(`${hex[1]}${hex[1]}`, 16),
+      b: Number.parseInt(`${hex[2]}${hex[2]}`, 16),
+    }
+  }
+
+  if (hex.length !== 6) {
+    return null
+  }
+
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
   }
 }
