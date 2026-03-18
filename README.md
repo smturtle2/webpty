@@ -44,6 +44,7 @@ Implemented:
 - tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
 - dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
 - dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
+- stable Theme Studio / Profile Studio draft syncing with no recursive render-loop console errors
 - in-app create / duplicate / delete flows for profile and theme entries
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
 - full color value editing in Theme Studio and Profile Studio so hex fields stay readable instead of collapsing to a clipped prefix
@@ -70,10 +71,12 @@ Implemented:
 - stricter launch cwd validation so file paths do not become session working directories
 - safer Funnel cleanup and broader capability detection during startup and shutdown
 - vertical and horizontal split creation inside the active tab
+- visible split-pane identity badges and stronger active-pane framing inside the terminal workspace
 - WebSocket input/output streaming and PTY resize handling
 - browser-safe profile icon sources rendered in the rail and settings workspace
 - embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
 - flatter Windows 11-style rail and settings surfaces with tighter density and broader text-overflow protection
+- refreshed repository screenshots captured from the sample settings catalog for stable docs output
 
 Known gaps:
 
@@ -113,6 +116,9 @@ Run with the repository sample settings:
 ```bash
 webpty up --settings ./config/webpty.settings.json
 ```
+
+`./config/webpty.settings.json` is a fixed demo catalog for screenshots and
+manual QA. Installed first-run defaults still come from the runtime host.
 
 ### External Access
 

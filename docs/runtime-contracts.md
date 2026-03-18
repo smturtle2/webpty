@@ -58,6 +58,8 @@ Default path selection:
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
 The repo sample stays opt-in through `webpty up --settings ./config/webpty.settings.json`.
+It is a fixed demo catalog for screenshots and manual QA, not the same thing as the
+generated first-run defaults.
 
 Disk parsing accepts JSONC-style comments and trailing commas.
 If the settings file is missing, the generated default profile catalog follows the runtime host rather than assuming one fixed OS.
@@ -150,4 +152,5 @@ Connection behavior:
 - `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit, including timeout / SIGTERM-style shutdown paths
 - the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
 - the frontend uses `hostPlatform` from `/api/health` to keep Profile Studio command and directory placeholders host-aware
+- split panes keep visible badge chrome and active-pane framing inside the terminal workspace
 - advanced pane graphs, search, and command palette remain future milestones

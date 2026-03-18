@@ -40,6 +40,7 @@
 - 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 별도 설정 워크스페이스 탭
 - `themes[]`, `theme`, 프레임 색상, 셸 크롬을 바로 다루는 Theme Studio
 - `profiles.list[]`, 기본 프로필, 프롬프트, 폰트, 셸 필드를 바로 다루는 Profile Studio
+- Theme Studio / Profile Studio 초안 동기화에서 재귀 렌더 루프 콘솔 오류가 나지 않도록 한 안정화
 - profile/theme 항목 생성·복제·삭제용 인앱 UI
 - 탭, 프레임, 셸, 커서, 선택 영역 색상을 위한 인앱 color picker
 - Theme Studio / Profile Studio의 색상 값 입력창이 잘리지 않도록 전체 값을 그대로 보여주는 편집 UI
@@ -66,10 +67,12 @@
 - 파일 경로가 세션 작업 디렉터리가 되지 않도록 하는 stricter cwd 검증
 - 시작/종료 시 Funnel 정리 경로와 capability 판별 보강
 - 활성 탭 안에서 수직/수평 split 생성
+- 터미널 워크스페이스 안에서 pane 식별 배지와 활성 pane 프레임을 드러내는 split chrome
 - PTY 입력, 리사이즈, 출력 스트림 처리
 - 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 워크스페이스에 렌더링
 - 프런트 빌드 후 Rust 임베디드 UI가 새 자산을 다시 포함하도록 하는 재빌드 추적
 - 더 평평한 Windows 11 스타일 레일/설정 패널과 텍스트 overflow 방지 보강
+- 레포 샘플 설정 기준으로 다시 캡처한 최신 문서 스크린샷
 
 알려진 공백:
 
@@ -109,6 +112,9 @@ webpty up
 ```bash
 webpty up --settings ./config/webpty.settings.json
 ```
+
+`./config/webpty.settings.json`은 스크린샷과 수동 QA를 위한 고정 데모
+카탈로그입니다. 실제 설치 후 첫 기본값은 여전히 실행 환경을 따릅니다.
 
 ### 외부 접속
 

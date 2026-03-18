@@ -31,9 +31,11 @@ This pass checked the repo against the current product constraints:
 - corrected the macOS user-scoped settings path to `~/Library/Application Support/webpty/settings.json`
 - flattened the right rail and split-pane treatment toward the thinner shell-first layout used by the product spec
 - tightened the right rail, settings panels, and preview surfaces further so the chrome stays flatter and text is less likely to escape its container
+- removed a Theme/Profile Studio draft-sync render loop that could trigger repeated `Maximum update depth exceeded` errors in the browser console
 - aligned Profile Studio prompt previews with the runtime `{profile}` sanitization path
 - stabilized xterm fitting with repeated post-mount passes so narrow and mobile widths no longer keep the initial off-canvas geometry
 - surfaced runtime host metadata to the UI so Profile Studio placeholders reflect the actual execution OS
+- surfaced split-pane identity chrome with visible pane badges and stronger active-pane framing
 - refreshed the documentation screenshots from the running app after the latest UI pass
 - aligned the docs with the current Theme Studio / Profile Studio naming that ships in the interface
 
@@ -53,6 +55,8 @@ This pass checked the repo against the current product constraints:
 - repeated xterm fit passes that settle correctly on narrow and mobile widths
 - host-scoped default profile generation and host-native settings paths
 - runtime host-aware placeholder hints inside Profile Studio
+- stable Theme/Profile draft syncing without recursive render-loop churn
+- visible split-pane identity chrome inside the terminal workspace
 - broader text-overflow protection in the right rail and settings workspace
 
 ## Remaining Gaps

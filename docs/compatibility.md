@@ -62,7 +62,7 @@ Profile fields used by the UI/runtime:
 Action fields currently mapped by the frontend:
 
 - string commands such as `"newTab"`
-- object commands with `command.action`, such as `{ "action": "newTab" }`
+- object commands with `command.action`, such as `{ "command": { "action": "newTab" } }`
 - mapped actions currently include `newTab`, `closeTab`, `nextTab`, `prevTab`, and `openSettings`
 
 ## Runtime Behavior
@@ -70,6 +70,7 @@ Action fields currently mapped by the frontend:
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
 - `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux, `~/Library/Application Support/webpty/settings.json` on macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
 - the repo sample at `./config/webpty.settings.json` is intentionally opt-in through `webpty up --settings ./config/webpty.settings.json`
+- the repo sample is a fixed demo catalog for screenshots and manual QA; it is not the same thing as the host-generated first-run defaults
 - if the settings file does not exist, `webpty` creates a default one
 - generated first-run settings now follow the runtime host: Windows seeds PowerShell/WSL-oriented profiles, while Linux/macOS seed local shell-first profiles
 - if an existing settings file is invalid, startup fails without overwriting it
@@ -78,6 +79,7 @@ Action fields currently mapped by the frontend:
 - the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
+- Theme Studio and Profile Studio draft syncing avoids self-triggered render loops while switching entries or reloading runtime settings
 - `GET /api/health` now includes `hostPlatform` so the UI can keep Profile Studio command and directory hints aligned with the runtime OS
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
 - theme and profile color inputs keep full token and hex values visible instead of clipping them down to a prefix stub
@@ -110,6 +112,7 @@ Action fields currently mapped by the frontend:
 - Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
 - the shipped UI keeps the terminal dominant, the right rail thin and hideable, and the settings workspace as a full tab rather than a floating overlay
 - the terminal viewport now reruns fit passes after mount and font load so narrow/mobile shells settle onto the visible width instead of keeping the initial off-canvas geometry
+- split panes keep visible badge chrome and active borders so pane identity remains readable without a top toolbar
 
 ## Known Gaps
 
