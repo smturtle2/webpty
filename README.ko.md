@@ -54,6 +54,8 @@
 - Profile Studio와 Theme Studio 미리보기에서 런타임과 같은 프로필별 프롬프트 규칙 반영
 - Theme/Profile Studio 프롬프트 미리보기에서 템플릿의 공백을 그대로 보존
 - 비Windows 셸 실행과 fallback 모두에서 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
+- 첫 실행 시 생성되는 기본 설정이 실행 OS를 따라가도록 한 host-scoped profile/settings 생성
+- macOS의 `~/Library/Application Support/webpty/settings.json`을 포함한 host-native 설정 경로
 - 사용자 전역 설정이 기본 우선순위를 가지며, 레포 샘플 설정은 `--settings`로만 opt-in
 - bracketed-paste 같은 제어 시퀀스가 요약 라인에 새지 않도록 하는 session preview sanitizing
 - `padding`, 명시적 `lineHeight`, `window.useMica`가 실제 뷰포트와 셸 크롬에 반영됨
@@ -63,6 +65,7 @@
 - PTY 입력, 리사이즈, 출력 스트림 처리
 - 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 워크스페이스에 렌더링
 - 프런트 빌드 후 Rust 임베디드 UI가 새 자산을 다시 포함하도록 하는 재빌드 추적
+- 더 평평한 Windows 11 스타일 레일/설정 패널과 텍스트 overflow 방지 보강
 
 알려진 공백:
 
@@ -133,11 +136,16 @@ webpty up --settings ./config/webpty.settings.json
 
 사용자 전역 경로:
 
-- Linux/macOS: `~/.config/webpty/settings.json`
+- Linux: `~/.config/webpty/settings.json`
+- macOS: `~/Library/Application Support/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
 파일이 없으면 기본 설정이 생성됩니다.
 기존 파일이 잘못되어 있으면 덮어쓰지 않고 에러로 종료합니다.
+생성되는 기본 프로필 카탈로그는 실행 환경을 따릅니다:
+
+- Windows: PowerShell 중심 + WSL 계열 프로필
+- Linux/macOS: 로컬 셸 중심 프로필
 
 ## 개발
 

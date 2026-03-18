@@ -211,6 +211,7 @@ function App() {
   const runtimeMessage = isBooting ? 'Syncing runtime contracts…' : serverHealth.message
   const settingsSectionMeta =
     SETTINGS_SECTIONS.find((section) => section.id === activeSettingsSection) ?? SETTINGS_SECTIONS[0]
+  const settingsRailLabel = compactRailLabel(settingsSectionMeta.label)
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -1817,17 +1818,19 @@ function App() {
               <RailToggleIcon collapsed={isRailCollapsed} />
             </button>
 
-            <button
-              type="button"
-              className={`rail-action rail-action-settings ${
-                activeWorkspace === 'settings' ? 'is-active' : ''
-              }`}
-              aria-label="Open settings"
-              title="Open settings"
-              onClick={() => revealSettings('appearance')}
-            >
-              <SettingsGlyph />
-            </button>
+            {!isSettingsOpen ? (
+              <button
+                type="button"
+                className={`rail-action rail-action-settings ${
+                  activeWorkspace === 'settings' ? 'is-active' : ''
+                }`}
+                aria-label="Open settings"
+                title="Open settings"
+                onClick={() => revealSettings('appearance')}
+              >
+                <SettingsGlyph />
+              </button>
+            ) : null}
           </div>
 
           <div className="rail-list" role="tablist" aria-label="Workspaces">
@@ -1846,7 +1849,7 @@ function App() {
                   <span className="rail-tab-icon">
                     <SettingsGlyph />
                   </span>
-                  <span className="rail-tab-copy">settings</span>
+                  <span className="rail-tab-copy">{settingsRailLabel}</span>
                 </button>
 
                 {closeButtonMode !== 'never' ? (
@@ -1867,6 +1870,7 @@ function App() {
                 sessions.find((session) => session.id === tab.paneIds[0]) ?? activeSession
               const profile = resolveProfile(settings, primarySession.profileId)
               const tabLabel = tabLabelForTab(tab, sessions, settings)
+              const railLabel = compactRailLabel(tabLabel)
               const isActive = activeWorkspace === 'terminal' && tab.id === currentTab.id
 
               return (
@@ -1890,7 +1894,7 @@ function App() {
                     <span className="rail-tab-icon">
                       <ProfileGlyph profile={profile} compact />
                     </span>
-                    <span className="rail-tab-copy">{tabLabel}</span>
+                    <span className="rail-tab-copy">{railLabel}</span>
                     {tab.paneIds.length > 1 ? (
                       <span className="rail-tab-meta">{tab.paneIds.length}</span>
                     ) : null}
@@ -2055,6 +2059,29 @@ function RangeField({ label, min, max, value, onChange }: RangeFieldProps) {
       </div>
     </label>
   )
+}
+
+function compactRailLabel(label: string): string {
+  const normalized = label.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+  if (normalized.length === 0) {
+    return 'TAB'
+  }
+
+  const parts = normalized.split(' ').filter((part) => part.length > 0)
+  if (parts.length > 1) {
+    const initials = parts
+      .map((part) => part[0] ?? '')
+      .join('')
+      .slice(0, 4)
+      .toUpperCase()
+
+    if (initials.length >= 2) {
+      return initials
+    }
+  }
+
+  return normalized.slice(0, 6).toUpperCase()
 }
 
 function normalizeHealth(payload: unknown): ServerHealth {

@@ -51,12 +51,14 @@ settings path.
 Default path selection:
 
 - `webpty up --settings <path>` or `WEBPTY_SETTINGS_PATH=<path>`
-- Linux/macOS: `~/.config/webpty/settings.json`
+- Linux: `~/.config/webpty/settings.json`
+- macOS: `~/Library/Application Support/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
 The repo sample stays opt-in through `webpty up --settings ./config/webpty.settings.json`.
 
 Disk parsing accepts JSONC-style comments and trailing commas.
+If the settings file is missing, the generated default profile catalog follows the runtime host rather than assuming one fixed OS.
 
 ### `PUT /api/settings`
 

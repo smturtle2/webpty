@@ -41,8 +41,33 @@ const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
 const DEFAULT_TAILSCALE_UP_TIMEOUT: &str = "30s";
+const SETTINGS_SCHEMA_URL: &str = "https://aka.ms/terminal-profiles-schema";
+const POWERSHELL_PROFILE_GUID: &str = "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}";
+const UBUNTU_PROFILE_GUID: &str = "{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}";
+const AZURE_OPS_PROFILE_GUID: &str = "{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}";
+const HOST_SHELL_PROFILE_GUID: &str = "{e8b9f7d8-9f74-4a65-9f6d-43ba3ee24411}";
+const BASH_PROFILE_GUID: &str = "{06de9c22-d6f1-43f4-a8dc-c7a29b18ab10}";
+const ZSH_PROFILE_GUID: &str = "{7e5f0ec3-5f15-4fc6-ae0f-571dfd6eb0cc}";
+const FISH_PROFILE_GUID: &str = "{9d7f8ab8-01b7-44f4-a4c8-488d04408ad6}";
 const WEB_UI_FINGERPRINT: &str = env!("WEBPTY_UI_FINGERPRINT");
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HostPlatform {
+    Windows,
+    MacOs,
+    Linux,
+    Other,
+}
+
+fn runtime_host_platform() -> HostPlatform {
+    match env::consts::OS {
+        "windows" => HostPlatform::Windows,
+        "macos" => HostPlatform::MacOs,
+        "linux" => HostPlatform::Linux,
+        _ => HostPlatform::Other,
+    }
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -1563,20 +1588,22 @@ fn default_settings_path() -> PathBuf {
 }
 
 fn user_settings_path() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        env::var_os("APPDATA")
+    user_settings_path_for_host(runtime_host_platform())
+}
+
+fn user_settings_path_for_host(host: HostPlatform) -> Option<PathBuf> {
+    match host {
+        HostPlatform::Windows => env::var_os("APPDATA")
             .map(PathBuf::from)
             .or_else(|| home_dir().map(|home| home.join("AppData").join("Roaming")))
-            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME))
-    }
-
-    #[cfg(not(windows))]
-    {
-        env::var_os("XDG_CONFIG_HOME")
+            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME)),
+        HostPlatform::MacOs => home_dir()
+            .map(|home| home.join("Library").join("Application Support"))
+            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME)),
+        HostPlatform::Linux | HostPlatform::Other => env::var_os("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .or_else(|| home_dir().map(|home| home.join(".config")))
-            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME))
+            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME)),
     }
 }
 
@@ -2316,7 +2343,6 @@ fn is_generic_shell_label(label: &str) -> bool {
     )
 }
 
-#[cfg(not(windows))]
 fn first_available_program(candidates: &[&str]) -> Option<String> {
     let paths = env::var_os("PATH")?;
 
@@ -2324,7 +2350,7 @@ fn first_available_program(candidates: &[&str]) -> Option<String> {
         env::split_paths(&paths)
             .map(|path| path.join(candidate))
             .find(|path| path.exists())
-            .map(|path| path.display().to_string())
+            .map(|_| (*candidate).to_string())
     })
 }
 
@@ -2581,309 +2607,477 @@ fn slugify(value: &str) -> String {
 }
 
 fn default_settings() -> TerminalSettings {
+    default_settings_for_host(runtime_host_platform())
+}
+
+fn default_settings_for_host(host: HostPlatform) -> TerminalSettings {
+    let profiles = default_profiles_for_host(host);
+    let default_profile = profiles
+        .first()
+        .map(profile_key)
+        .unwrap_or_else(|| HOST_SHELL_PROFILE_GUID.to_string());
+
     TerminalSettings {
-        schema: Some("https://aka.ms/terminal-profiles-schema".to_string()),
-        default_profile: "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}".to_string(),
+        schema: Some(SETTINGS_SCHEMA_URL.to_string()),
+        default_profile,
         copy_formatting: Some("all".to_string()),
         theme: Some(ThemeSelection::Named("Classic".to_string())),
-        themes: vec![
-            TerminalTheme {
-                name: "Classic".to_string(),
-                window: Some(TerminalWindowTheme {
-                    application_theme: Some("dark".to_string()),
-                    use_mica: Some(false),
-                    frame: Some("#d8d8d8".to_string()),
-                    unfocused_frame: Some("#cfcfcf".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab: Some(TerminalTabTheme {
-                    background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#f5f5f5".to_string()),
-                    show_close_button: Some("activeOnly".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab_row: Some(TerminalTabRowTheme {
-                    background: Some("#f3f3f3".to_string()),
-                    unfocused_background: Some("#ededed".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                extra: JsonMap::new(),
-            },
-            TerminalTheme {
-                name: "Mist".to_string(),
-                window: Some(TerminalWindowTheme {
-                    application_theme: Some("dark".to_string()),
-                    use_mica: Some(false),
-                    frame: Some("#d4d4d4".to_string()),
-                    unfocused_frame: Some("#cacaca".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab: Some(TerminalTabTheme {
-                    background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#f2f2f2".to_string()),
-                    show_close_button: Some("hover".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab_row: Some(TerminalTabRowTheme {
-                    background: Some("#efefef".to_string()),
-                    unfocused_background: Some("#e7e7e7".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                extra: JsonMap::new(),
-            },
-            TerminalTheme {
-                name: "Slate".to_string(),
-                window: Some(TerminalWindowTheme {
-                    application_theme: Some("dark".to_string()),
-                    use_mica: None,
-                    frame: Some("#cdcdcd".to_string()),
-                    unfocused_frame: Some("#c2c2c2".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab: Some(TerminalTabTheme {
-                    background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#ececec".to_string()),
-                    show_close_button: Some("always".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                tab_row: Some(TerminalTabRowTheme {
-                    background: Some("#e5e5e5".to_string()),
-                    unfocused_background: Some("#dcdcdc".to_string()),
-                    extra: JsonMap::new(),
-                }),
-                extra: JsonMap::new(),
-            },
-        ],
-        actions: vec![
-            TerminalAction {
-                command: Some(TerminalActionCommand::Named("newTab".to_string())),
-                keys: vec!["ctrl+t".to_string()],
-                name: None,
-                extra: JsonMap::new(),
-            },
-            TerminalAction {
-                command: Some(TerminalActionCommand::Named("closeTab".to_string())),
-                keys: vec!["ctrl+w".to_string()],
-                name: None,
-                extra: JsonMap::new(),
-            },
-            TerminalAction {
-                command: Some(TerminalActionCommand::Named("nextTab".to_string())),
-                keys: vec!["ctrl+tab".to_string()],
-                name: None,
-                extra: JsonMap::new(),
-            },
-            TerminalAction {
-                command: Some(TerminalActionCommand::Named("prevTab".to_string())),
-                keys: vec!["ctrl+shift+tab".to_string()],
-                name: None,
-                extra: JsonMap::new(),
-            },
-            TerminalAction {
-                command: Some(TerminalActionCommand::Named("openSettings".to_string())),
-                keys: vec!["ctrl+,".to_string()],
-                name: None,
-                extra: JsonMap::new(),
-            },
-        ],
+        themes: default_theme_catalog(),
+        actions: default_action_catalog(),
         profiles: TerminalProfiles {
-            defaults: Some(TerminalProfileDefaults {
-                font: Some(TerminalFontSettings {
-                    face: Some("Cascadia Mono".to_string()),
-                    size: Some(13.0),
-                    weight: None,
-                    cell_height: Some(1.22),
-                    extra: JsonMap::new(),
-                }),
-                font_face: None,
-                font_size: None,
-                font_weight: None,
-                cell_height: None,
-                line_height: Some(1.22),
-                cursor_shape: Some("bar".to_string()),
-                opacity: Some(100.0),
-                use_acrylic: None,
-                foreground: None,
-                background: None,
-                cursor_color: None,
-                selection_background: None,
-                padding: None,
-                extra: JsonMap::new(),
-            }),
-            list: vec![
-                TerminalProfile {
-                    guid: Some("{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}".to_string()),
-                    name: "PowerShell".to_string(),
-                    icon: Some("PS".to_string()),
-                    commandline: Some("pwsh.exe".to_string()),
-                    starting_directory: Some("%USERPROFILE%".to_string()),
-                    source: None,
-                    hidden: Some(false),
-                    tab_color: Some("#3b78ff".to_string()),
-                    tab_title: None,
-                    color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
-                    font: None,
-                    font_face: None,
-                    font_size: None,
-                    font_weight: None,
-                    cell_height: None,
-                    line_height: None,
-                    cursor_shape: None,
-                    opacity: None,
-                    use_acrylic: None,
-                    foreground: None,
-                    background: None,
-                    cursor_color: None,
-                    selection_background: None,
-                    padding: None,
-                    webpty: Some(WebptyProfileOptions {
-                        prompt: Some("PS {cwd}> ".to_string()),
-                        extra: JsonMap::new(),
-                    }),
-                    extra: JsonMap::new(),
-                },
-                TerminalProfile {
-                    guid: Some("{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}".to_string()),
-                    name: "Ubuntu".to_string(),
-                    icon: Some("UB".to_string()),
-                    commandline: Some("wsl.exe -d Ubuntu".to_string()),
-                    starting_directory: Some("~".to_string()),
-                    source: None,
-                    hidden: Some(false),
-                    tab_color: Some("#f0a355".to_string()),
-                    tab_title: None,
-                    color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
-                    font: None,
-                    font_face: None,
-                    font_size: None,
-                    font_weight: None,
-                    cell_height: None,
-                    line_height: None,
-                    cursor_shape: None,
-                    opacity: None,
-                    use_acrylic: None,
-                    foreground: None,
-                    background: None,
-                    cursor_color: None,
-                    selection_background: None,
-                    padding: None,
-                    webpty: Some(WebptyProfileOptions {
-                        prompt: Some("{user}@{host}:{cwd}{symbol} ".to_string()),
-                        extra: JsonMap::new(),
-                    }),
-                    extra: JsonMap::new(),
-                },
-                TerminalProfile {
-                    guid: Some("{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}".to_string()),
-                    name: "Azure Ops".to_string(),
-                    icon: Some("AZ".to_string()),
-                    commandline: Some(
-                        "pwsh.exe -NoLogo -NoExit -Command kubectl config current-context"
-                            .to_string(),
-                    ),
-                    starting_directory: Some("%USERPROFILE%/deploy".to_string()),
-                    source: None,
-                    hidden: Some(false),
-                    tab_color: Some("#2fbf9b".to_string()),
-                    tab_title: None,
-                    color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
-                    font: None,
-                    font_face: None,
-                    font_size: None,
-                    font_weight: None,
-                    cell_height: None,
-                    line_height: None,
-                    cursor_shape: None,
-                    opacity: None,
-                    use_acrylic: None,
-                    foreground: None,
-                    background: None,
-                    cursor_color: None,
-                    selection_background: None,
-                    padding: None,
-                    webpty: Some(WebptyProfileOptions {
-                        prompt: Some("{user}@{host}:{cwd}{symbol} ".to_string()),
-                        extra: JsonMap::new(),
-                    }),
-                    extra: JsonMap::new(),
-                },
-            ],
+            defaults: Some(default_profile_defaults()),
+            list: profiles,
             extra: JsonMap::new(),
         },
-        schemes: vec![
-            TerminalColorScheme {
-                name: "Campbell".to_string(),
-                background: "#0c0c0c".to_string(),
-                foreground: "#f2f2f2".to_string(),
-                cursor_color: Some("#ffffff".to_string()),
-                selection_background: Some("#264f78".to_string()),
-                black: Some("#0c0c0c".to_string()),
-                red: Some("#c50f1f".to_string()),
-                green: Some("#13a10e".to_string()),
-                yellow: Some("#c19c00".to_string()),
-                blue: Some("#0037da".to_string()),
-                purple: Some("#881798".to_string()),
-                cyan: Some("#3a96dd".to_string()),
-                white: Some("#cccccc".to_string()),
-                bright_black: Some("#767676".to_string()),
-                bright_red: Some("#e74856".to_string()),
-                bright_green: Some("#16c60c".to_string()),
-                bright_yellow: Some("#f9f1a5".to_string()),
-                bright_blue: Some("#3b78ff".to_string()),
-                bright_purple: Some("#b4009e".to_string()),
-                bright_cyan: Some("#61d6d6".to_string()),
-                bright_white: Some("#f2f2f2".to_string()),
+        schemes: default_scheme_catalog(),
+        extra: JsonMap::new(),
+    }
+}
+
+fn default_profile_defaults() -> TerminalProfileDefaults {
+    TerminalProfileDefaults {
+        font: Some(TerminalFontSettings {
+            face: Some("Cascadia Mono".to_string()),
+            size: Some(13.0),
+            weight: None,
+            cell_height: Some(1.22),
+            extra: JsonMap::new(),
+        }),
+        font_face: None,
+        font_size: None,
+        font_weight: None,
+        cell_height: None,
+        line_height: Some(1.22),
+        cursor_shape: Some("bar".to_string()),
+        opacity: Some(100.0),
+        use_acrylic: None,
+        foreground: None,
+        background: None,
+        cursor_color: None,
+        selection_background: None,
+        padding: None,
+        extra: JsonMap::new(),
+    }
+}
+
+fn default_theme_catalog() -> Vec<TerminalTheme> {
+    vec![
+        TerminalTheme {
+            name: "Classic".to_string(),
+            window: Some(TerminalWindowTheme {
+                application_theme: Some("dark".to_string()),
+                use_mica: Some(false),
+                frame: Some("#d8d8d8".to_string()),
+                unfocused_frame: Some("#cfcfcf".to_string()),
                 extra: JsonMap::new(),
-            },
-            TerminalColorScheme {
-                name: "One Half Dark".to_string(),
-                background: "#282c34".to_string(),
-                foreground: "#dcdfe4".to_string(),
-                cursor_color: Some("#dcdfe4".to_string()),
-                selection_background: Some("#3e4452".to_string()),
-                black: Some("#282c34".to_string()),
-                red: Some("#e06c75".to_string()),
-                green: Some("#98c379".to_string()),
-                yellow: Some("#e5c07b".to_string()),
-                blue: Some("#61afef".to_string()),
-                purple: Some("#c678dd".to_string()),
-                cyan: Some("#56b6c2".to_string()),
-                white: Some("#dcdfe4".to_string()),
-                bright_black: Some("#5a6374".to_string()),
-                bright_red: Some("#ff7b86".to_string()),
-                bright_green: Some("#b4d88f".to_string()),
-                bright_yellow: Some("#f4d399".to_string()),
-                bright_blue: Some("#83c7ff".to_string()),
-                bright_purple: Some("#d7a7f0".to_string()),
-                bright_cyan: Some("#7ddce7".to_string()),
-                bright_white: Some("#f4f7fb".to_string()),
+            }),
+            tab: Some(TerminalTabTheme {
+                background: Some("#ffffff".to_string()),
+                unfocused_background: Some("#f5f5f5".to_string()),
+                show_close_button: Some("activeOnly".to_string()),
                 extra: JsonMap::new(),
-            },
-            TerminalColorScheme {
-                name: "Nord".to_string(),
-                background: "#2e3440".to_string(),
-                foreground: "#eceff4".to_string(),
-                cursor_color: Some("#d8dee9".to_string()),
-                selection_background: Some("#434c5e".to_string()),
-                black: Some("#3b4252".to_string()),
-                red: Some("#bf616a".to_string()),
-                green: Some("#a3be8c".to_string()),
-                yellow: Some("#ebcb8b".to_string()),
-                blue: Some("#81a1c1".to_string()),
-                purple: Some("#b48ead".to_string()),
-                cyan: Some("#88c0d0".to_string()),
-                white: Some("#e5e9f0".to_string()),
-                bright_black: Some("#4c566a".to_string()),
-                bright_red: Some("#d06f79".to_string()),
-                bright_green: Some("#b1d196".to_string()),
-                bright_yellow: Some("#f2d399".to_string()),
-                bright_blue: Some("#8cafd2".to_string()),
-                bright_purple: Some("#c39dc0".to_string()),
-                bright_cyan: Some("#93ccdc".to_string()),
-                bright_white: Some("#eceff4".to_string()),
+            }),
+            tab_row: Some(TerminalTabRowTheme {
+                background: Some("#f3f3f3".to_string()),
+                unfocused_background: Some("#ededed".to_string()),
                 extra: JsonMap::new(),
-            },
+            }),
+            extra: JsonMap::new(),
+        },
+        TerminalTheme {
+            name: "Mist".to_string(),
+            window: Some(TerminalWindowTheme {
+                application_theme: Some("dark".to_string()),
+                use_mica: Some(false),
+                frame: Some("#d4d4d4".to_string()),
+                unfocused_frame: Some("#cacaca".to_string()),
+                extra: JsonMap::new(),
+            }),
+            tab: Some(TerminalTabTheme {
+                background: Some("#ffffff".to_string()),
+                unfocused_background: Some("#f2f2f2".to_string()),
+                show_close_button: Some("hover".to_string()),
+                extra: JsonMap::new(),
+            }),
+            tab_row: Some(TerminalTabRowTheme {
+                background: Some("#efefef".to_string()),
+                unfocused_background: Some("#e7e7e7".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        },
+        TerminalTheme {
+            name: "Slate".to_string(),
+            window: Some(TerminalWindowTheme {
+                application_theme: Some("dark".to_string()),
+                use_mica: None,
+                frame: Some("#cdcdcd".to_string()),
+                unfocused_frame: Some("#c2c2c2".to_string()),
+                extra: JsonMap::new(),
+            }),
+            tab: Some(TerminalTabTheme {
+                background: Some("#ffffff".to_string()),
+                unfocused_background: Some("#ececec".to_string()),
+                show_close_button: Some("always".to_string()),
+                extra: JsonMap::new(),
+            }),
+            tab_row: Some(TerminalTabRowTheme {
+                background: Some("#e5e5e5".to_string()),
+                unfocused_background: Some("#dcdcdc".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        },
+    ]
+}
+
+fn default_action_catalog() -> Vec<TerminalAction> {
+    vec![
+        TerminalAction {
+            command: Some(TerminalActionCommand::Named("newTab".to_string())),
+            keys: vec!["ctrl+t".to_string()],
+            name: None,
+            extra: JsonMap::new(),
+        },
+        TerminalAction {
+            command: Some(TerminalActionCommand::Named("closeTab".to_string())),
+            keys: vec!["ctrl+w".to_string()],
+            name: None,
+            extra: JsonMap::new(),
+        },
+        TerminalAction {
+            command: Some(TerminalActionCommand::Named("nextTab".to_string())),
+            keys: vec!["ctrl+tab".to_string()],
+            name: None,
+            extra: JsonMap::new(),
+        },
+        TerminalAction {
+            command: Some(TerminalActionCommand::Named("prevTab".to_string())),
+            keys: vec!["ctrl+shift+tab".to_string()],
+            name: None,
+            extra: JsonMap::new(),
+        },
+        TerminalAction {
+            command: Some(TerminalActionCommand::Named("openSettings".to_string())),
+            keys: vec!["ctrl+,".to_string()],
+            name: None,
+            extra: JsonMap::new(),
+        },
+    ]
+}
+
+fn default_scheme_catalog() -> Vec<TerminalColorScheme> {
+    vec![
+        TerminalColorScheme {
+            name: "Campbell".to_string(),
+            background: "#0c0c0c".to_string(),
+            foreground: "#f2f2f2".to_string(),
+            cursor_color: Some("#ffffff".to_string()),
+            selection_background: Some("#264f78".to_string()),
+            black: Some("#0c0c0c".to_string()),
+            red: Some("#c50f1f".to_string()),
+            green: Some("#13a10e".to_string()),
+            yellow: Some("#c19c00".to_string()),
+            blue: Some("#0037da".to_string()),
+            purple: Some("#881798".to_string()),
+            cyan: Some("#3a96dd".to_string()),
+            white: Some("#cccccc".to_string()),
+            bright_black: Some("#767676".to_string()),
+            bright_red: Some("#e74856".to_string()),
+            bright_green: Some("#16c60c".to_string()),
+            bright_yellow: Some("#f9f1a5".to_string()),
+            bright_blue: Some("#3b78ff".to_string()),
+            bright_purple: Some("#b4009e".to_string()),
+            bright_cyan: Some("#61d6d6".to_string()),
+            bright_white: Some("#f2f2f2".to_string()),
+            extra: JsonMap::new(),
+        },
+        TerminalColorScheme {
+            name: "One Half Dark".to_string(),
+            background: "#282c34".to_string(),
+            foreground: "#dcdfe4".to_string(),
+            cursor_color: Some("#dcdfe4".to_string()),
+            selection_background: Some("#3e4452".to_string()),
+            black: Some("#282c34".to_string()),
+            red: Some("#e06c75".to_string()),
+            green: Some("#98c379".to_string()),
+            yellow: Some("#e5c07b".to_string()),
+            blue: Some("#61afef".to_string()),
+            purple: Some("#c678dd".to_string()),
+            cyan: Some("#56b6c2".to_string()),
+            white: Some("#dcdfe4".to_string()),
+            bright_black: Some("#5a6374".to_string()),
+            bright_red: Some("#ff7b86".to_string()),
+            bright_green: Some("#b4d88f".to_string()),
+            bright_yellow: Some("#f4d399".to_string()),
+            bright_blue: Some("#83c7ff".to_string()),
+            bright_purple: Some("#d7a7f0".to_string()),
+            bright_cyan: Some("#7ddce7".to_string()),
+            bright_white: Some("#f4f7fb".to_string()),
+            extra: JsonMap::new(),
+        },
+        TerminalColorScheme {
+            name: "Nord".to_string(),
+            background: "#2e3440".to_string(),
+            foreground: "#eceff4".to_string(),
+            cursor_color: Some("#d8dee9".to_string()),
+            selection_background: Some("#434c5e".to_string()),
+            black: Some("#3b4252".to_string()),
+            red: Some("#bf616a".to_string()),
+            green: Some("#a3be8c".to_string()),
+            yellow: Some("#ebcb8b".to_string()),
+            blue: Some("#81a1c1".to_string()),
+            purple: Some("#b48ead".to_string()),
+            cyan: Some("#88c0d0".to_string()),
+            white: Some("#e5e9f0".to_string()),
+            bright_black: Some("#4c566a".to_string()),
+            bright_red: Some("#d06f79".to_string()),
+            bright_green: Some("#b1d196".to_string()),
+            bright_yellow: Some("#f2d399".to_string()),
+            bright_blue: Some("#8cafd2".to_string()),
+            bright_purple: Some("#c39dc0".to_string()),
+            bright_cyan: Some("#93ccdc".to_string()),
+            bright_white: Some("#eceff4".to_string()),
+            extra: JsonMap::new(),
+        },
+    ]
+}
+
+fn default_profiles_for_host(host: HostPlatform) -> Vec<TerminalProfile> {
+    match host {
+        HostPlatform::Windows => vec![
+            build_profile(
+                POWERSHELL_PROFILE_GUID,
+                "PowerShell",
+                "PS",
+                Some("pwsh.exe"),
+                Some("%USERPROFILE%"),
+                "Campbell",
+                "#3b78ff",
+                Some("PS {cwd}> "),
+            ),
+            build_profile(
+                UBUNTU_PROFILE_GUID,
+                "Ubuntu",
+                "UB",
+                Some("wsl.exe -d Ubuntu"),
+                Some("~"),
+                "One Half Dark",
+                "#f0a355",
+                Some("{user}@{host}:{cwd}{symbol} "),
+            ),
+            build_profile(
+                AZURE_OPS_PROFILE_GUID,
+                "Azure Ops",
+                "AZ",
+                Some("pwsh.exe -NoLogo -NoExit -Command kubectl config current-context"),
+                Some("%USERPROFILE%/deploy"),
+                "Campbell",
+                "#2fbf9b",
+                Some("{user}@{host}:{cwd}{symbol} "),
+            ),
         ],
+        HostPlatform::MacOs | HostPlatform::Linux | HostPlatform::Other => {
+            default_unix_profiles(host)
+        }
+    }
+}
+
+fn default_unix_profiles(host: HostPlatform) -> Vec<TerminalProfile> {
+    let mut profiles = Vec::new();
+    let primary_commandline = preferred_posix_shell_commandline(host);
+    let primary_name = shell_display_name(&primary_commandline);
+    let primary_icon = profile_icon(&primary_name);
+    let primary_program = shell_command_key(&primary_commandline);
+
+    push_unique_profile(
+        &mut profiles,
+        build_profile(
+            HOST_SHELL_PROFILE_GUID,
+            &primary_name,
+            &primary_icon,
+            Some(primary_commandline.as_str()),
+            Some("~"),
+            "Campbell",
+            "#3b78ff",
+            Some("{user}@{host}:{cwd}{symbol} "),
+        ),
+    );
+
+    if let Some(pwsh) = first_available_program(&["pwsh", "powershell"])
+        && shell_command_key(&pwsh) != primary_program
+    {
+        push_unique_profile(
+            &mut profiles,
+            build_profile(
+                POWERSHELL_PROFILE_GUID,
+                "PowerShell",
+                "PS",
+                Some(&pwsh),
+                Some("~"),
+                "Campbell",
+                "#3b78ff",
+                Some("PS {cwd}> "),
+            ),
+        );
+    }
+
+    for (guid, candidates, scheme, tab_color) in [
+        (BASH_PROFILE_GUID, &["bash"][..], "Campbell", "#3b78ff"),
+        (ZSH_PROFILE_GUID, &["zsh"][..], "One Half Dark", "#f0a355"),
+        (FISH_PROFILE_GUID, &["fish"][..], "Nord", "#2fbf9b"),
+    ] {
+        if let Some(commandline) = first_available_program(candidates)
+            && shell_command_key(&commandline) != primary_program
+        {
+            let name = shell_display_name(&commandline);
+            let icon = profile_icon(&name);
+            push_unique_profile(
+                &mut profiles,
+                build_profile(
+                    guid,
+                    &name,
+                    &icon,
+                    Some(&commandline),
+                    Some("~"),
+                    scheme,
+                    tab_color,
+                    Some("{user}@{host}:{cwd}{symbol} "),
+                ),
+            );
+        }
+    }
+
+    profiles
+}
+
+fn preferred_posix_shell_commandline(host: HostPlatform) -> String {
+    if let Ok(shell) = env::var("SHELL") {
+        let trimmed = shell.trim();
+        if !trimmed.is_empty() && Path::new(trimmed).exists() {
+            return trimmed.to_string();
+        }
+    }
+
+    let candidates: &[&str] = match host {
+        HostPlatform::MacOs => &["/bin/zsh", "/bin/bash", "/bin/sh"],
+        HostPlatform::Linux | HostPlatform::Other => &["/bin/bash", "/bin/sh"],
+        HostPlatform::Windows => &["/bin/sh"],
+    };
+
+    candidates
+        .iter()
+        .find(|candidate| Path::new(candidate).exists())
+        .map(|candidate| (*candidate).to_string())
+        .unwrap_or_else(|| "/bin/sh".to_string())
+}
+
+fn shell_display_name(commandline: &str) -> String {
+    match shell_command_key(commandline).as_str() {
+        "pwsh" | "pwsh.exe" | "powershell" | "powershell.exe" => "PowerShell".to_string(),
+        "bash" | "bash.exe" => "Bash".to_string(),
+        "zsh" | "zsh.exe" => "Zsh".to_string(),
+        "fish" | "fish.exe" => "Fish".to_string(),
+        "sh" => "Shell".to_string(),
+        other => title_case_shell_name(other),
+    }
+}
+
+fn shell_command_key(commandline: &str) -> String {
+    commandline
+        .rsplit(|character| character == '/' || character == '\\')
+        .next()
+        .unwrap_or(commandline)
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn title_case_shell_name(value: &str) -> String {
+    let trimmed = value.trim().trim_end_matches(".exe");
+    if trimmed.is_empty() {
+        return "Shell".to_string();
+    }
+
+    let mut characters = trimmed.chars();
+    let Some(first) = characters.next() else {
+        return "Shell".to_string();
+    };
+
+    format!(
+        "{}{}",
+        first.to_ascii_uppercase(),
+        characters.as_str().to_ascii_lowercase()
+    )
+}
+
+fn profile_icon(name: &str) -> String {
+    let letters = name
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>();
+
+    if letters.is_empty() {
+        "SH".to_string()
+    } else {
+        letters
+            .chars()
+            .take(2)
+            .collect::<String>()
+            .to_ascii_uppercase()
+    }
+}
+
+fn push_unique_profile(profiles: &mut Vec<TerminalProfile>, profile: TerminalProfile) {
+    let duplicate = profiles.iter().any(|existing| {
+        existing.name == profile.name
+            || existing.commandline == profile.commandline
+            || existing.guid == profile.guid
+    });
+
+    if !duplicate {
+        profiles.push(profile);
+    }
+}
+
+fn build_profile(
+    guid: &str,
+    name: &str,
+    icon: &str,
+    commandline: Option<&str>,
+    starting_directory: Option<&str>,
+    scheme: &str,
+    tab_color: &str,
+    prompt: Option<&str>,
+) -> TerminalProfile {
+    TerminalProfile {
+        guid: Some(guid.to_string()),
+        name: name.to_string(),
+        icon: Some(icon.to_string()),
+        commandline: commandline.map(str::to_string),
+        starting_directory: starting_directory.map(str::to_string),
+        source: None,
+        hidden: Some(false),
+        tab_color: Some(tab_color.to_string()),
+        tab_title: None,
+        color_scheme: Some(SchemeSelection::Named(scheme.to_string())),
+        font: None,
+        font_face: None,
+        font_size: None,
+        font_weight: None,
+        cell_height: None,
+        line_height: None,
+        cursor_shape: None,
+        opacity: None,
+        use_acrylic: None,
+        foreground: None,
+        background: None,
+        cursor_color: None,
+        selection_background: None,
+        padding: None,
+        webpty: Some(WebptyProfileOptions {
+            prompt: prompt.map(str::to_string),
+            extra: JsonMap::new(),
+        }),
         extra: JsonMap::new(),
     }
 }
@@ -3156,7 +3350,7 @@ mod tests {
 
     #[test]
     fn normalize_settings_reassigns_hidden_default_profile() {
-        let mut settings = default_settings();
+        let mut settings = default_settings_for_host(HostPlatform::Windows);
         settings.profiles.list[0].hidden = Some(true);
 
         let normalized = normalize_settings(settings).expect("settings should normalize");
@@ -3216,16 +3410,25 @@ mod tests {
 
         let original_override = env::var_os("WEBPTY_SETTINGS_PATH");
         let original_xdg = env::var_os("XDG_CONFIG_HOME");
+        let original_home = env::var_os("HOME");
 
         unsafe {
             env::remove_var("WEBPTY_SETTINGS_PATH");
             env::set_var("XDG_CONFIG_HOME", "/tmp/webpty-user-scope");
+            env::set_var("HOME", "/tmp/webpty-home");
         }
 
-        assert_eq!(
-            default_settings_path(),
-            PathBuf::from("/tmp/webpty-user-scope/webpty/settings.json")
-        );
+        let expected = match runtime_host_platform() {
+            HostPlatform::MacOs => {
+                PathBuf::from("/tmp/webpty-home/Library/Application Support/webpty/settings.json")
+            }
+            HostPlatform::Linux | HostPlatform::Other => {
+                PathBuf::from("/tmp/webpty-user-scope/webpty/settings.json")
+            }
+            HostPlatform::Windows => unreachable!("windows path test is cfg-gated"),
+        };
+
+        assert_eq!(default_settings_path(), expected);
 
         match original_override {
             Some(value) => unsafe { env::set_var("WEBPTY_SETTINGS_PATH", value) },
@@ -3236,9 +3439,14 @@ mod tests {
             Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
             None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
         }
+
+        match original_home {
+            Some(value) => unsafe { env::set_var("HOME", value) },
+            None => unsafe { env::remove_var("HOME") },
+        }
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     #[test]
     fn user_settings_path_uses_xdg_config_home() {
         let _guard = env_lock().lock().expect("env mutex poisoned");
@@ -3257,6 +3465,90 @@ mod tests {
             Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
             None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
         }
+    }
+
+    #[test]
+    fn user_settings_path_uses_application_support_on_macos() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_home = env::var_os("HOME");
+        let original_xdg = env::var_os("XDG_CONFIG_HOME");
+        unsafe {
+            env::set_var("HOME", "/tmp/webpty-macos-home");
+            env::set_var("XDG_CONFIG_HOME", "/tmp/webpty-macos-xdg");
+        }
+
+        assert_eq!(
+            user_settings_path_for_host(HostPlatform::MacOs),
+            Some(PathBuf::from(
+                "/tmp/webpty-macos-home/Library/Application Support/webpty/settings.json"
+            ))
+        );
+
+        match original_home {
+            Some(value) => unsafe { env::set_var("HOME", value) },
+            None => unsafe { env::remove_var("HOME") },
+        }
+
+        match original_xdg {
+            Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
+            None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
+        }
+    }
+
+    #[test]
+    fn default_settings_for_linux_uses_host_shell_defaults() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_shell = env::var_os("SHELL");
+        unsafe {
+            env::set_var("SHELL", "/bin/bash");
+        }
+
+        let settings = default_settings_for_host(HostPlatform::Linux);
+        let primary = settings
+            .profiles
+            .list
+            .first()
+            .expect("linux defaults should include a primary profile");
+
+        assert_eq!(settings.default_profile, HOST_SHELL_PROFILE_GUID);
+        assert_eq!(primary.name, "Bash");
+        assert_eq!(primary.commandline.as_deref(), Some("/bin/bash"));
+        assert_eq!(primary.starting_directory.as_deref(), Some("~"));
+        assert!(
+            settings.profiles.list.iter().all(|profile| profile
+                .commandline
+                .as_deref()
+                .is_none_or(|commandline| !commandline.contains(".exe"))),
+            "linux defaults should not seed Windows executables"
+        );
+
+        match original_shell {
+            Some(value) => unsafe { env::set_var("SHELL", value) },
+            None => unsafe { env::remove_var("SHELL") },
+        }
+    }
+
+    #[test]
+    fn default_settings_for_windows_keeps_windows_profiles() {
+        let settings = default_settings_for_host(HostPlatform::Windows);
+        let primary = settings
+            .profiles
+            .list
+            .first()
+            .expect("windows defaults should include a primary profile");
+
+        assert_eq!(settings.default_profile, POWERSHELL_PROFILE_GUID);
+        assert_eq!(primary.name, "PowerShell");
+        assert_eq!(primary.commandline.as_deref(), Some("pwsh.exe"));
+        assert!(
+            settings
+                .profiles
+                .list
+                .iter()
+                .any(|profile| profile.commandline.as_deref() == Some("wsl.exe -d Ubuntu"))
+        );
     }
 
     #[test]

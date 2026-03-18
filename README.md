@@ -58,6 +58,8 @@ Implemented:
 - runtime-matched profile prompt previews in Profile Studio and theme previews
 - literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
 - per-profile prompt shaping on non-Windows shell launches and fallbacks so sessions do not collapse to `bash-5.2$`
+- host-scoped default settings generation so first-run profiles follow the runtime OS instead of shipping Windows-only launch commands everywhere
+- host-native default settings paths, including `~/Library/Application Support/webpty/settings.json` on macOS
 - user-scoped settings now win by default, while the repo sample stays opt-in through `--settings`
 - sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
 - real viewport application for `padding`, explicit `lineHeight`, and `window.useMica`
@@ -67,6 +69,7 @@ Implemented:
 - WebSocket input/output streaming and PTY resize handling
 - browser-safe profile icon sources rendered in the rail and settings workspace
 - embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
+- flatter Windows 11-style rail and settings surfaces with tighter density and broader text-overflow protection
 
 Known gaps:
 
@@ -137,11 +140,16 @@ webpty up --settings ./config/webpty.settings.json
 
 User-scoped platform path:
 
-- Linux/macOS: `~/.config/webpty/settings.json`
+- Linux: `~/.config/webpty/settings.json`
+- macOS: `~/Library/Application Support/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
 
 If the file does not exist, `webpty` creates a default one.
 If an existing file is invalid, startup fails without overwriting it.
+The generated default profile catalog follows the runtime host:
+
+- Windows: PowerShell-first with additional WSL-oriented profiles
+- Linux/macOS: local shell-first profiles derived from the host environment
 
 ## Development
 

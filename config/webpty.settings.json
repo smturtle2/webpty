@@ -1,6 +1,6 @@
 {
   "$schema": "https://aka.ms/terminal-profiles-schema",
-  "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+  "defaultProfile": "{e8b9f7d8-9f74-4a65-9f6d-43ba3ee24411}",
   "copyFormatting": "all",
   "theme": "Classic",
   "themes": [
@@ -104,43 +104,55 @@
     },
     "list": [
       {
-        "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
-        "name": "PowerShell",
-        "icon": "PS",
-        "webpty": {
-          "prompt": "PS {cwd}> "
-        },
-        "commandline": "pwsh.exe",
-        "startingDirectory": "%USERPROFILE%",
+        "guid": "{e8b9f7d8-9f74-4a65-9f6d-43ba3ee24411}",
+        "name": "Host Shell",
+        "icon": "SH",
+        "startingDirectory": "~",
         "hidden": false,
         "tabColor": "#3b78ff",
-        "colorScheme": "Campbell"
-      },
-      {
-        "guid": "{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}",
-        "name": "Ubuntu",
-        "icon": "UB",
+        "colorScheme": "Campbell",
         "webpty": {
           "prompt": "{user}@{host}:{cwd}{symbol} "
-        },
-        "commandline": "wsl.exe -d Ubuntu",
+        }
+      },
+      {
+        "guid": "{06de9c22-d6f1-43f4-a8dc-c7a29b18ab10}",
+        "name": "Bash",
+        "icon": "BA",
+        "commandline": "bash",
         "startingDirectory": "~",
         "hidden": false,
         "tabColor": "#f0a355",
-        "colorScheme": "One Half Dark"
-      },
-      {
-        "guid": "{8f54aa7f-b2cb-4f79-bf9d-5f06dfc7f265}",
-        "name": "Azure Ops",
-        "icon": "AZ",
+        "colorScheme": "Campbell",
         "webpty": {
           "prompt": "{user}@{host}:{cwd}{symbol} "
-        },
-        "commandline": "pwsh.exe -NoLogo -NoExit -Command kubectl config current-context",
-        "startingDirectory": "%USERPROFILE%/deploy",
+        }
+      },
+      {
+        "guid": "{7e5f0ec3-5f15-4fc6-ae0f-571dfd6eb0cc}",
+        "name": "Zsh",
+        "icon": "ZS",
+        "commandline": "zsh",
+        "startingDirectory": "~",
         "hidden": false,
         "tabColor": "#2fbf9b",
-        "colorScheme": "Campbell"
+        "colorScheme": "One Half Dark",
+        "webpty": {
+          "prompt": "{user}@{host}:{cwd}{symbol} "
+        }
+      },
+      {
+        "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+        "name": "PowerShell",
+        "icon": "PS",
+        "commandline": "pwsh",
+        "startingDirectory": "~",
+        "hidden": false,
+        "tabColor": "#7a95ff",
+        "colorScheme": "Campbell",
+        "webpty": {
+          "prompt": "PS {cwd}> "
+        }
       }
     ]
   },

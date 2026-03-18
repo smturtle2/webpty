@@ -68,9 +68,10 @@ Action fields currently mapped by the frontend:
 ## Runtime Behavior
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
-- `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux/macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
+- `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux, `~/Library/Application Support/webpty/settings.json` on macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
 - the repo sample at `./config/webpty.settings.json` is intentionally opt-in through `webpty up --settings ./config/webpty.settings.json`
 - if the settings file does not exist, `webpty` creates a default one
+- generated first-run settings now follow the runtime host: Windows seeds PowerShell/WSL-oriented profiles, while Linux/macOS seed local shell-first profiles
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
 - the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
@@ -104,6 +105,7 @@ Action fields currently mapped by the frontend:
 - nested `font` objects on profiles and profile defaults round-trip through the Rust runtime
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
 - Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
+- the shipped UI keeps the terminal dominant, the right rail thin and hideable, and the settings workspace as a full tab rather than a floating overlay
 
 ## Known Gaps
 
