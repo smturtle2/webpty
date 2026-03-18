@@ -4,52 +4,52 @@ export const demoSettings: WindowsTerminalSettings = {
   $schema: 'https://aka.ms/terminal-profiles-schema',
   defaultProfile: '{5b49f6c2-a5f8-4265-a0f5-d184f3c9a13f}',
   copyFormatting: 'all',
-  theme: 'Blueprint',
+  theme: 'Classic',
   themes: [
     {
-      name: 'Graphite',
+      name: 'Classic',
       window: {
         applicationTheme: 'dark',
-        useMica: true,
+        useMica: false,
       },
       tab: {
         background: '#ffffff',
-        unfocusedBackground: '#f1f3f5',
+        unfocusedBackground: '#f5f5f5',
         showCloseButton: 'hover',
       },
       tabRow: {
-        background: '#d8dee5',
-        unfocusedBackground: '#cfd6de',
+        background: '#f3f3f3',
+        unfocusedBackground: '#ededed',
       },
     },
     {
-      name: 'Paperlight',
-      window: {
-        applicationTheme: 'light',
-      },
-      tab: {
-        background: '#ffffff',
-        unfocusedBackground: '#f7f4ef',
-        showCloseButton: 'hover',
-      },
-      tabRow: {
-        background: '#e8ddd0',
-        unfocusedBackground: '#ddd2c6',
-      },
-    },
-    {
-      name: 'Blueprint',
+      name: 'Mist',
       window: {
         applicationTheme: 'dark',
       },
       tab: {
         background: '#ffffff',
-        unfocusedBackground: '#f4f7fb',
+        unfocusedBackground: '#f2f2f2',
+        showCloseButton: 'hover',
+      },
+      tabRow: {
+        background: '#efefef',
+        unfocusedBackground: '#e7e7e7',
+      },
+    },
+    {
+      name: 'Slate',
+      window: {
+        applicationTheme: 'dark',
+      },
+      tab: {
+        background: '#ffffff',
+        unfocusedBackground: '#ececec',
         showCloseButton: 'always',
       },
       tabRow: {
-        background: '#dce8f5',
-        unfocusedBackground: '#cfdff0',
+        background: '#e5e5e5',
+        unfocusedBackground: '#dcdcdc',
       },
     },
   ],
@@ -181,9 +181,9 @@ export const demoSessions: SessionItem[] = [
     lastUsedLabel: 'Now',
     cwd: '~/projects/webpty',
     previewLines: [
-      '$ cargo run --manifest-path apps/server/Cargo.toml',
+      'webpty@ubuntu:~/projects/webpty$ cargo run --manifest-path apps/server/Cargo.toml',
       'server listening on http://127.0.0.1:3001',
-      '$ npm run dev:web',
+      'webpty@ubuntu:~/projects/webpty$ npm run dev:web',
       'VITE ready in 266ms',
     ],
   },
@@ -196,9 +196,9 @@ export const demoSessions: SessionItem[] = [
     lastUsedLabel: '7m ago',
     cwd: '~/services/api',
     previewLines: [
-      '$ git status --short',
+      'webpty@ubuntu:~/services/api$ git status --short',
       ' M apps/web/src/App.tsx',
-      '$ pnpm test',
+      'webpty@ubuntu:~/services/api$ pnpm test',
       'pass: 42 / fail: 0',
     ],
   },
@@ -211,7 +211,7 @@ export const demoSessions: SessionItem[] = [
     lastUsedLabel: 'Updated',
     cwd: '~/deploy/staging',
     previewLines: [
-      'kubectl get pods',
+      'AzureOps ~/deploy/staging$ kubectl get pods',
       'api-7d4bf6cd7-ptfsw   1/1 Running',
       'ws-6f479cb4cc-gbr7j  1/1 Running',
       'warning: rollout pending',

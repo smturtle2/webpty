@@ -57,13 +57,14 @@ Action fields currently mapped by the frontend:
 ## Runtime Behavior
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
+- `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then `./config/webpty.settings.json` from the current working directory if present, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux/macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - profile launch uses the WT `commandline` when possible
-- if a configured shell cannot be started, the Rust runtime falls back to a platform shell and prints a session banner
+- if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session
 - unsupported WT keys are preserved when the supported subset is loaded and saved again, including edits initiated from the in-app settings UI
 

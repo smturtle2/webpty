@@ -491,7 +491,13 @@ function App() {
   }
 
   async function handleThemeApply(nextThemeName: string) {
-    await commitSettings({ ...settingsDocument, theme: nextThemeName }, canConnect)
+    await commitSettings(
+      {
+        ...settingsDocument,
+        theme: applyThemeSelection(settings.theme, uiAppearance, nextThemeName),
+      },
+      canConnect,
+    )
   }
 
   async function handleDefaultProfileSelect(profileId: string) {
@@ -755,27 +761,6 @@ function App() {
           data-close-mode={closeButtonMode}
           aria-label="Session rail"
         >
-          <div className="rail-head">
-            <button
-              type="button"
-              className="rail-brand"
-              onClick={() => setIsSettingsOpen((current) => !current)}
-              aria-label="Open settings"
-            >
-              <span className="rail-brand-mark">WT</span>
-              <span className="rail-brand-copy">shell</span>
-            </button>
-            <div className="rail-status" aria-label="Runtime status">
-              <span className={`rail-connection is-${connectionState}`} aria-hidden="true" />
-              <span>{runtimeLabel}</span>
-            </div>
-          </div>
-
-          <div className="rail-caption" aria-label="Session count">
-            <strong>{tabs.length}</strong>
-            <span>tabs</span>
-          </div>
-
           <div className="rail-list" role="tablist" aria-label="Sessions">
             {tabs.map((tab) => {
               const primarySession =
@@ -834,7 +819,7 @@ function App() {
           <div className="rail-footer">
             <button
               type="button"
-              className="rail-action"
+              className="rail-action is-primary"
               aria-label="New session"
               onClick={() => void createSession()}
             >
@@ -848,7 +833,7 @@ function App() {
               onClick={() => setIsSettingsOpen((current) => !current)}
             >
               <span>cfg</span>
-              <small>set</small>
+              <small>{isSettingsOpen ? 'open' : runtimeLabel}</small>
             </button>
           </div>
         </aside>
@@ -1267,7 +1252,7 @@ function createFallbackSession(
     lastUsedLabel: 'Now',
     cwd,
     previewLines: [
-      '$ webpty --demo',
+      `${promptPrefixForProfile(profile, cwd)}webpty --demo`,
       `profile: ${profile.name}`,
       `commandline: ${profile.commandline ?? 'default shell'}`,
       'local fallback session ready',
@@ -1327,6 +1312,21 @@ function resolveActionBindings(actions: WindowsTerminalAction[] | undefined): Ac
   }
 
   return bindings
+}
+
+function applyThemeSelection(
+  current: WindowsTerminalSettings['theme'],
+  appearance: 'dark' | 'light',
+  nextThemeName: string,
+): WindowsTerminalSettings['theme'] {
+  if (!current || typeof current === 'string') {
+    return nextThemeName
+  }
+
+  return {
+    ...current,
+    [appearance]: nextThemeName,
+  }
 }
 
 function normalizeActionCommand(command: string | undefined): SupportedActionCommand | null {
@@ -1459,7 +1459,7 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 function profileBadge(profile: WindowsTerminalProfile) {
-  if (profile.icon) {
+  if (profile.icon && isBadgeText(profile.icon)) {
     return profile.icon
   }
 
@@ -1469,6 +1469,37 @@ function profileBadge(profile: WindowsTerminalProfile) {
     .join('')
     .slice(0, 2)
     .toUpperCase()
+}
+
+function isBadgeText(value: string) {
+  const trimmed = value.trim()
+
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 3 &&
+    !/[\\/.:]/.test(trimmed) &&
+    !/\.(png|svg|ico|jpg|jpeg|webp)$/i.test(trimmed)
+  )
+}
+
+function promptPrefixForProfile(profile: WindowsTerminalProfile, cwd: string) {
+  const lowerName = profile.name.toLowerCase()
+  const lowerCommand = profile.commandline?.toLowerCase() ?? ''
+
+  if (lowerName.includes('powershell') || lowerCommand.includes('pwsh')) {
+    return `PS ${cwd}> `
+  }
+
+  if (
+    lowerName.includes('ubuntu') ||
+    lowerName.includes('wsl') ||
+    lowerCommand.includes('wsl') ||
+    lowerCommand.includes('bash')
+  ) {
+    return `webpty@ubuntu:${cwd}$ `
+  }
+
+  return `${profile.name.replace(/\s+/g, '')} ${cwd}$ `
 }
 
 function sessionTitle(session: SessionItem, profile: WindowsTerminalProfile) {

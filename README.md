@@ -22,6 +22,15 @@ together.
 The app is intentionally smaller than Windows Terminal, but it now runs a real
 Rust PTY backend instead of a mock transcript transport.
 
+Settings resolution order is:
+
+1. `webpty up --settings <path>` or `WEBPTY_SETTINGS_PATH=<path>`
+2. `./config/webpty.settings.json` from the current working directory, if present
+3. the user-scoped platform path
+
+The repository sample at `config/webpty.settings.json` is still useful for
+development, screenshots, and a known-good flat theme baseline.
+
 ## Preview
 
 ![webpty preview](./docs/assets/webpty-preview.png)
@@ -37,8 +46,11 @@ Implemented today:
 - `webpty up` CLI entrypoint for local startup
 - `webpty up --funnel` external access through Tailscale Funnel
 - one dominant black terminal surface with a narrow white right-side session rail and no top toolbar
+- a single-split pane workspace inside the active tab
+- no injected startup banner ahead of the shell prompt
 - WT-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - profile launch, default profile selection, theme switching, and JSON editing in a Windows 11-style right-anchored settings panel
+- profile-matched fallback prompts on non-Windows hosts so Windows-targeted profiles do not collapse to `bash-5.2$`
 - WebSocket input/output streaming and PTY resize handling
 
 Not implemented yet:
@@ -47,6 +59,7 @@ Not implemented yet:
 - command palette and search surface
 - drag/drop or manual tab reordering
 - deeper Windows Terminal action object parity
+- full asset/icon parity for every Windows Terminal profile icon URI format
 - session restoration across app restarts
 
 ## Product Direction
@@ -85,6 +98,12 @@ cargo install --path apps/server --bin webpty --locked
 webpty up
 ```
 
+For the repository sample settings and screenshots:
+
+```bash
+webpty up --settings ./config/webpty.settings.json
+```
+
 ### Run with external access
 
 ```bash
@@ -94,6 +113,20 @@ webpty up --funnel
 `--funnel` uses the local `tailscale` CLI to publish the embedded web UI over
 Tailscale Funnel. Run `tailscale up` first and make sure the node has Funnel
 capability enabled.
+
+### Settings Path
+
+Resolution order:
+
+- `webpty up --settings <path>`
+- `WEBPTY_SETTINGS_PATH=<path>`
+- `./config/webpty.settings.json` in the current working directory, if present
+- user-scoped platform path
+
+User-scoped platform path:
+
+- Linux/macOS: `~/.config/webpty/settings.json`
+- Windows: `%APPDATA%\\webpty\\settings.json`
 
 ### Development
 
@@ -123,6 +156,7 @@ binary.
 
 ```bash
 npm run build:web
+cargo test --manifest-path apps/server/Cargo.toml
 cargo check
 ```
 

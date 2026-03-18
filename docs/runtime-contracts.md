@@ -45,14 +45,21 @@ Serves the embedded production web UI that is bundled into the Rust binary.
 
 ### `GET /api/settings`
 
-Returns the current WT-compatible `settings.json` subset loaded from
-`config/webpty.settings.json`.
+Returns the current WT-compatible `settings.json` subset loaded from the active
+settings path.
+
+Default path selection:
+
+- `webpty up --settings <path>` or `WEBPTY_SETTINGS_PATH=<path>`
+- `./config/webpty.settings.json` from the current working directory, if present
+- Linux/macOS: `~/.config/webpty/settings.json`
+- Windows: `%APPDATA%\\webpty\\settings.json`
 
 ### `PUT /api/settings`
 
-Accepts the same WT-compatible JSON subset and persists it back to
-`config/webpty.settings.json`. Unsupported keys that travel alongside the
-supported subset are preserved on round-trip.
+Accepts the same WT-compatible JSON subset and persists it back to the active
+settings path. Unsupported keys that travel alongside the supported subset are
+preserved on round-trip.
 
 ### `GET /api/sessions`
 
@@ -71,6 +78,9 @@ Accepted fields:
 Notes:
 
 - requests targeting a `hidden: true` profile return `400`
+- on non-Windows hosts, Windows-targeted profiles fall back to a local shell
+  with a prompt shape that matches the requested profile more closely than a
+  raw `bash-5.2$` prompt
 
 Returns:
 

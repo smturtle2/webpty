@@ -35,8 +35,8 @@ use uuid::Uuid;
 
 const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 3001;
-const DEFAULT_SETTINGS_PATH: &str = "config/webpty.settings.json";
-const FUNNEL_PROXY_TARGET_HOST: &str = "127.0.0.1";
+const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
+const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
@@ -478,6 +478,8 @@ struct WtProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tab_color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    tab_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     color_scheme: Option<SchemeSelection>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
@@ -695,7 +697,7 @@ async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
     println!("webpty ready on {}", options.local_origin());
 
     let mut tunnel = if options.funnel {
-        Some(start_funnel(options.port).await?)
+        Some(start_funnel(&options.host, options.port).await?)
     } else {
         None
     };
@@ -716,10 +718,10 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-async fn start_funnel(port: u16) -> Result<TunnelHandle, Box<dyn std::error::Error>> {
+async fn start_funnel(host: &str, port: u16) -> Result<TunnelHandle, Box<dyn std::error::Error>> {
     ensure_tailscale_ready().await?;
 
-    let target = format!("{FUNNEL_PROXY_TARGET_HOST}:{port}");
+    let target = funnel_proxy_target(host, port);
     let selection = select_funnel_port(&target).await?;
     let dns_name = tailscale_dns_name().await?;
     let (https_port, managed_by_webpty) = match selection {
@@ -961,6 +963,14 @@ fn resolve_funnel_url(https_port: u16, dns_name: &str) -> String {
     }
 }
 
+fn funnel_proxy_target(host: &str, port: u16) -> String {
+    match host {
+        "::" | "[::]" => format!("[::1]:{port}"),
+        "0.0.0.0" | "127.0.0.1" | "localhost" => format!("127.0.0.1:{port}"),
+        value => format!("{value}:{port}"),
+    }
+}
+
 async fn terminate_all_sessions(state: &AppState) {
     let sessions = state.sessions.read().await;
     for session in sessions.values() {
@@ -1106,7 +1116,7 @@ async fn create_session(
     }
     let title = payload
         .title
-        .unwrap_or_else(|| format!("{}-tab", slugify(&profile.name)));
+        .unwrap_or_else(|| default_session_title(&profile));
     let sort_index = {
         let sessions = state.sessions.read().await;
         sessions
@@ -1281,9 +1291,34 @@ async fn send_json(
 }
 
 fn default_settings_path() -> PathBuf {
-    env::var("WEBPTY_SETTINGS_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(DEFAULT_SETTINGS_PATH))
+    if let Ok(path) = env::var("WEBPTY_SETTINGS_PATH") {
+        return PathBuf::from(path);
+    }
+
+    let workspace_path = PathBuf::from(FALLBACK_SETTINGS_PATH);
+    if workspace_path.exists() {
+        return workspace_path;
+    }
+
+    user_settings_path().unwrap_or(workspace_path)
+}
+
+fn user_settings_path() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .or_else(|| home_dir().map(|home| home.join("AppData").join("Roaming")))
+            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME))
+    }
+
+    #[cfg(not(windows))]
+    {
+        env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| home_dir().map(|home| home.join(".config")))
+            .map(|root| root.join("webpty").join(DEFAULT_SETTINGS_FILENAME))
+    }
 }
 
 fn load_settings(path: &Path) -> Result<WindowsTerminalSettings, Box<dyn std::error::Error>> {
@@ -1348,7 +1383,10 @@ fn seed_sessions(
     let session = spawn_session(
         settings,
         "session-shell".to_string(),
-        "workspace-shell".to_string(),
+        default_session_title(
+            resolve_profile(settings, &default_profile_id)
+                .expect("default profile should resolve for seeded session"),
+        ),
         default_profile_id,
         None,
         0,
@@ -1382,7 +1420,7 @@ fn spawn_session(
             has_activity: false,
             last_used_label: "Now".to_string(),
             sort_index,
-            transcript: session_banner(&title, &profile.name, &plan),
+            transcript: String::new(),
         }),
         runtime: SessionRuntime {
             master: Arc::new(Mutex::new(spawned.master)),
@@ -1391,6 +1429,15 @@ fn spawn_session(
             events,
         },
     });
+
+    if !plan.notes.is_empty() {
+        for note in &plan.notes {
+            eprintln!(
+                "webpty launch note [{} / {}]: {}",
+                profile.name, title, note
+            );
+        }
+    }
 
     spawn_reader(state.clone(), spawned.reader);
     spawn_waiter(state.clone(), spawned.child);
@@ -1405,13 +1452,27 @@ fn build_launch_plan(profile: &WtProfile, cwd_override: Option<String>) -> Launc
 
     if let Some(commandline) = profile.commandline.as_deref() {
         #[cfg(not(target_os = "windows"))]
+        if let Some(builder) = adapt_windows_commandline_to_host(commandline, &mut notes) {
+            let fallback = default_shell_builder(Some(profile));
+
+            return LaunchPlan {
+                command: builder,
+                command_label: commandline.to_string(),
+                fallback_command: Some(fallback.clone()),
+                fallback_label: Some(default_shell_label()),
+                cwd,
+                notes,
+            };
+        }
+
+        #[cfg(not(target_os = "windows"))]
         if looks_windows_command(commandline) {
             notes.push(format!(
-                "[webpty] `{commandline}` is a Windows-targeted profile. Using the local default shell on this host."
+                "`{commandline}` is a Windows-targeted profile. Using a local shell with a profile-matched prompt."
             ));
 
             return LaunchPlan {
-                command: default_shell_builder(),
+                command: default_shell_builder(Some(profile)),
                 command_label: default_shell_label(),
                 fallback_command: None,
                 fallback_label: None,
@@ -1420,9 +1481,15 @@ fn build_launch_plan(profile: &WtProfile, cwd_override: Option<String>) -> Launc
             };
         }
 
-        let builder =
-            command_builder_from_commandline(commandline).unwrap_or_else(default_shell_builder);
-        let fallback = default_shell_builder();
+        let builder = if let Some(builder) = command_builder_from_commandline(commandline) {
+            builder
+        } else {
+            notes.push(format!(
+                "could not parse `{commandline}` on this host. Falling back to the local shell."
+            ));
+            default_shell_builder(Some(profile))
+        };
+        let fallback = default_shell_builder(Some(profile));
 
         LaunchPlan {
             command: builder,
@@ -1434,7 +1501,7 @@ fn build_launch_plan(profile: &WtProfile, cwd_override: Option<String>) -> Launc
         }
     } else {
         LaunchPlan {
-            command: default_shell_builder(),
+            command: default_shell_builder(Some(profile)),
             command_label: default_shell_label(),
             fallback_command: None,
             fallback_label: None,
@@ -1537,7 +1604,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 fn command_builder_from_commandline(commandline: &str) -> Option<CommandBuilder> {
-    let args = shlex::split(commandline)?;
+    let args = parse_commandline_args(commandline)?;
     let program = args.first()?;
     let mut builder = CommandBuilder::new(program);
     if args.len() > 1 {
@@ -1546,7 +1613,115 @@ fn command_builder_from_commandline(commandline: &str) -> Option<CommandBuilder>
     Some(builder)
 }
 
-fn default_shell_builder() -> CommandBuilder {
+fn parse_commandline_args(commandline: &str) -> Option<Vec<String>> {
+    #[cfg(windows)]
+    {
+        split_windows_commandline(commandline)
+    }
+
+    #[cfg(not(windows))]
+    {
+        shlex::split(commandline)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn adapt_windows_commandline_to_host(
+    commandline: &str,
+    notes: &mut Vec<String>,
+) -> Option<CommandBuilder> {
+    let args = shlex::split(commandline)?;
+    let program = args.first()?.trim().to_ascii_lowercase();
+
+    if matches!(program.as_str(), "pwsh.exe" | "powershell.exe") {
+        let local_program = first_available_program(&["pwsh", "powershell"])?;
+        let mut builder = CommandBuilder::new(&local_program);
+        if args.len() > 1 {
+            builder.args(args.iter().skip(1));
+        }
+        notes.push(format!(
+            "mapped `{commandline}` to the local `{local_program}` executable."
+        ));
+        return Some(builder);
+    }
+
+    None
+}
+
+#[cfg(windows)]
+fn split_windows_commandline(commandline: &str) -> Option<Vec<String>> {
+    let characters = commandline.chars().collect::<Vec<_>>();
+    let mut arguments = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut argument_open = false;
+    let mut index = 0;
+
+    while index < characters.len() {
+        let character = characters[index];
+
+        if !in_quotes && character.is_whitespace() {
+            if argument_open {
+                arguments.push(std::mem::take(&mut current));
+                argument_open = false;
+            }
+            index += 1;
+            continue;
+        }
+
+        let mut backslash_count = 0;
+        while index < characters.len() && characters[index] == '\\' {
+            backslash_count += 1;
+            index += 1;
+        }
+
+        if index < characters.len() && characters[index] == '"' {
+            current.push_str(&"\\".repeat(backslash_count / 2));
+            argument_open = true;
+
+            if backslash_count % 2 == 0 {
+                if in_quotes && index + 1 < characters.len() && characters[index + 1] == '"' {
+                    current.push('"');
+                    index += 1;
+                } else {
+                    in_quotes = !in_quotes;
+                }
+            } else {
+                current.push('"');
+            }
+
+            index += 1;
+            continue;
+        }
+
+        if backslash_count > 0 {
+            current.push_str(&"\\".repeat(backslash_count));
+            argument_open = true;
+        }
+
+        if index < characters.len() {
+            current.push(characters[index]);
+            argument_open = true;
+            index += 1;
+        }
+    }
+
+    if in_quotes {
+        return None;
+    }
+
+    if argument_open {
+        arguments.push(current);
+    }
+
+    if arguments.is_empty() {
+        None
+    } else {
+        Some(arguments)
+    }
+}
+
+fn default_shell_builder(profile: Option<&WtProfile>) -> CommandBuilder {
     #[cfg(windows)]
     {
         let shell = env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
@@ -1574,6 +1749,7 @@ fn default_shell_builder() -> CommandBuilder {
 
         let mut builder = CommandBuilder::new(shell);
         builder.env("TERM", "xterm-256color");
+        apply_profile_prompt(&mut builder, profile);
 
         if cfg!(unix) {
             if builder
@@ -1602,6 +1778,91 @@ fn default_shell_label() -> String {
     {
         env::var("SHELL").unwrap_or_else(|_| "/bin/bash -i".to_string())
     }
+}
+
+#[cfg(not(windows))]
+fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&WtProfile>) {
+    builder.env("PS1", profile_prompt(profile));
+    builder.env("PROMPT_COMMAND", "");
+}
+
+#[cfg(not(windows))]
+fn profile_prompt(profile: Option<&WtProfile>) -> String {
+    let Some(profile) = profile else {
+        return "\\w\\$ ".to_string();
+    };
+
+    let profile_name = profile.name.trim();
+    let commandline = profile
+        .commandline
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let normalized_name = profile_name.to_ascii_lowercase();
+
+    if normalized_name.contains("powershell") || commandline.contains("pwsh") {
+        if normalized_name == "powershell" {
+            return "PS \\w> ".to_string();
+        }
+
+        let label = sanitize_prompt_label(profile_name);
+        return format!("PS({label}) \\w> ");
+    }
+
+    if let Some(host_label) = profile_host_label(profile_name, &commandline) {
+        return format!("\\u@{host_label}:\\w\\$ ");
+    }
+
+    let label = sanitize_prompt_label(profile_name);
+    format!("[{label}] \\w\\$ ")
+}
+
+#[cfg(not(windows))]
+fn sanitize_prompt_label(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || *character == '-' || *character == '_'
+        })
+        .collect::<String>();
+
+    if sanitized.is_empty() {
+        "webpty".to_string()
+    } else {
+        sanitized
+    }
+}
+
+#[cfg(not(windows))]
+fn profile_host_label(profile_name: &str, commandline: &str) -> Option<String> {
+    let normalized_name = sanitize_prompt_label(&profile_name.to_ascii_lowercase());
+    let normalized_command = commandline.to_ascii_lowercase();
+
+    if normalized_command.contains("wsl") || normalized_name.contains("ubuntu") {
+        return Some(if normalized_name.is_empty() {
+            "ubuntu".to_string()
+        } else {
+            normalized_name
+        });
+    }
+
+    if normalized_command.contains("bash") || normalized_name.contains("bash") {
+        return Some("shell".to_string());
+    }
+
+    None
+}
+
+#[cfg(not(windows))]
+fn first_available_program(candidates: &[&str]) -> Option<String> {
+    let paths = env::var_os("PATH")?;
+
+    candidates.iter().find_map(|candidate| {
+        env::split_paths(&paths)
+            .map(|path| path.join(candidate))
+            .find(|path| path.exists())
+            .map(|path| path.display().to_string())
+    })
 }
 
 fn spawn_pty(plan: &mut LaunchPlan) -> Result<SpawnedPty, String> {
@@ -1674,22 +1935,6 @@ fn spawn_with_builder(builder: &CommandBuilder) -> Result<SpawnedPty, String> {
         child,
         reader,
     })
-}
-
-fn session_banner(title: &str, profile_name: &str, plan: &LaunchPlan) -> String {
-    let mut transcript = format!(
-        "webpty connected\r\nsession: {title}\r\nprofile: {profile_name}\r\ncwd: {}\r\ncommandline: {}\r\n",
-        plan.cwd.display(),
-        plan.command_label
-    );
-
-    if !plan.notes.is_empty() {
-        transcript.push_str(&plan.notes.join("\r\n"));
-        transcript.push_str("\r\n");
-    }
-
-    transcript.push_str("\r\n");
-    transcript
 }
 
 fn spawn_reader(session: Arc<SessionState>, mut reader: Box<dyn Read + Send>) {
@@ -1770,6 +2015,15 @@ fn profile_key(profile: &WtProfile) -> String {
         .unwrap_or_else(|| slugify(&profile.name))
 }
 
+fn default_session_title(profile: &WtProfile) -> String {
+    profile
+        .tab_title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(&profile.name)
+        .to_string()
+}
+
 fn preview_lines(transcript: &str) -> Vec<String> {
     transcript
         .lines()
@@ -1808,50 +2062,50 @@ fn default_settings() -> WindowsTerminalSettings {
         schema: Some("https://aka.ms/terminal-profiles-schema".to_string()),
         default_profile: "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}".to_string(),
         copy_formatting: Some("all".to_string()),
-        theme: Some(ThemeSelection::Named("Blueprint".to_string())),
+        theme: Some(ThemeSelection::Named("Classic".to_string())),
         themes: vec![
             WtTheme {
-                name: "Graphite".to_string(),
+                name: "Classic".to_string(),
                 window: Some(WtWindowTheme {
                     application_theme: Some("dark".to_string()),
-                    use_mica: Some(true),
+                    use_mica: Some(false),
                     extra: JsonMap::new(),
                 }),
                 tab: Some(WtTabTheme {
                     background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#f1f3f5".to_string()),
+                    unfocused_background: Some("#f5f5f5".to_string()),
                     show_close_button: Some("hover".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#d8dee5".to_string()),
-                    unfocused_background: Some("#cfd6de".to_string()),
+                    background: Some("#f3f3f3".to_string()),
+                    unfocused_background: Some("#ededed".to_string()),
                     extra: JsonMap::new(),
                 }),
                 extra: JsonMap::new(),
             },
             WtTheme {
-                name: "Paperlight".to_string(),
+                name: "Mist".to_string(),
                 window: Some(WtWindowTheme {
-                    application_theme: Some("light".to_string()),
-                    use_mica: None,
+                    application_theme: Some("dark".to_string()),
+                    use_mica: Some(false),
                     extra: JsonMap::new(),
                 }),
                 tab: Some(WtTabTheme {
                     background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#f7f4ef".to_string()),
+                    unfocused_background: Some("#f2f2f2".to_string()),
                     show_close_button: Some("hover".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#e8ddd0".to_string()),
-                    unfocused_background: Some("#ddd2c6".to_string()),
+                    background: Some("#efefef".to_string()),
+                    unfocused_background: Some("#e7e7e7".to_string()),
                     extra: JsonMap::new(),
                 }),
                 extra: JsonMap::new(),
             },
             WtTheme {
-                name: "Blueprint".to_string(),
+                name: "Slate".to_string(),
                 window: Some(WtWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: None,
@@ -1859,13 +2113,13 @@ fn default_settings() -> WindowsTerminalSettings {
                 }),
                 tab: Some(WtTabTheme {
                     background: Some("#ffffff".to_string()),
-                    unfocused_background: Some("#f4f7fb".to_string()),
+                    unfocused_background: Some("#ececec".to_string()),
                     show_close_button: Some("always".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab_row: Some(WtTabRowTheme {
-                    background: Some("#dce8f5".to_string()),
-                    unfocused_background: Some("#cfdff0".to_string()),
+                    background: Some("#e5e5e5".to_string()),
+                    unfocused_background: Some("#dcdcdc".to_string()),
                     extra: JsonMap::new(),
                 }),
                 extra: JsonMap::new(),
@@ -1922,6 +2176,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     source: None,
                     hidden: Some(false),
                     tab_color: Some("#3b78ff".to_string()),
+                    tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
                     extra: JsonMap::new(),
                 },
@@ -1934,6 +2189,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     source: None,
                     hidden: Some(false),
                     tab_color: Some("#f0a355".to_string()),
+                    tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
                     extra: JsonMap::new(),
                 },
@@ -1949,6 +2205,7 @@ fn default_settings() -> WindowsTerminalSettings {
                     source: None,
                     hidden: Some(false),
                     tab_color: Some("#2fbf9b".to_string()),
+                    tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
                     extra: JsonMap::new(),
                 },
@@ -2030,5 +2287,134 @@ fn default_settings() -> WindowsTerminalSettings {
             },
         ],
         extra: JsonMap::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn uses_tab_title_for_default_session_title() {
+        let profile = WtProfile {
+            guid: None,
+            name: "PowerShell".to_string(),
+            icon: None,
+            commandline: Some("pwsh.exe".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: Some("Admin".to_string()),
+            color_scheme: None,
+            extra: JsonMap::new(),
+        };
+
+        assert_eq!(default_session_title(&profile), "Admin");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn profile_prompt_matches_profile_family() {
+        let powershell = WtProfile {
+            guid: None,
+            name: "PowerShell".to_string(),
+            icon: None,
+            commandline: Some("pwsh.exe".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            extra: JsonMap::new(),
+        };
+        let ubuntu = WtProfile {
+            guid: None,
+            name: "Ubuntu".to_string(),
+            icon: None,
+            commandline: Some("wsl.exe -d Ubuntu".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            extra: JsonMap::new(),
+        };
+        let custom = WtProfile {
+            guid: None,
+            name: "Azure Ops".to_string(),
+            icon: None,
+            commandline: Some("bash".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            extra: JsonMap::new(),
+        };
+
+        assert_eq!(profile_prompt(Some(&powershell)), "PS \\w> ");
+        assert_eq!(profile_prompt(Some(&ubuntu)), "\\u@ubuntu:\\w\\$ ");
+        assert_eq!(profile_prompt(Some(&custom)), "\\u@shell:\\w\\$ ");
+        assert_eq!(profile_prompt(None), "\\w\\$ ");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn default_settings_path_prefers_env_override() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_override = env::var_os("WEBPTY_SETTINGS_PATH");
+        let original_xdg = env::var_os("XDG_CONFIG_HOME");
+
+        unsafe {
+            env::set_var("WEBPTY_SETTINGS_PATH", "/tmp/webpty-tests/settings.json");
+            env::set_var("XDG_CONFIG_HOME", "/tmp/ignored-xdg");
+        }
+
+        assert_eq!(
+            default_settings_path(),
+            PathBuf::from("/tmp/webpty-tests/settings.json")
+        );
+
+        match original_override {
+            Some(value) => unsafe { env::set_var("WEBPTY_SETTINGS_PATH", value) },
+            None => unsafe { env::remove_var("WEBPTY_SETTINGS_PATH") },
+        }
+
+        match original_xdg {
+            Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
+            None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn user_settings_path_uses_xdg_config_home() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_xdg = env::var_os("XDG_CONFIG_HOME");
+        unsafe {
+            env::set_var("XDG_CONFIG_HOME", "/tmp/webpty-config");
+        }
+
+        assert_eq!(
+            user_settings_path(),
+            Some(PathBuf::from("/tmp/webpty-config/webpty/settings.json"))
+        );
+
+        match original_xdg {
+            Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
+            None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
+        }
     }
 }

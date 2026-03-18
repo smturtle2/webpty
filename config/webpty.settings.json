@@ -2,54 +2,54 @@
   "$schema": "https://aka.ms/terminal-profiles-schema",
   "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
   "copyFormatting": "all",
-  "theme": "Blueprint",
+  "theme": "Classic",
   "themes": [
     {
-      "name": "Graphite",
-      "window": {
-        "applicationTheme": "dark",
-        "useMica": true
-      },
-      "tab": {
-        "background": "#ffffff",
-        "unfocusedBackground": "#f1f3f5",
-        "showCloseButton": "hover"
-      },
-      "tabRow": {
-        "background": "#d8dee5",
-        "unfocusedBackground": "#cfd6de"
-      }
-    },
-    {
-      "name": "Paperlight",
-      "window": {
-        "applicationTheme": "light",
-        "useMica": false
-      },
-      "tab": {
-        "background": "#ffffff",
-        "unfocusedBackground": "#f7f4ef",
-        "showCloseButton": "hover"
-      },
-      "tabRow": {
-        "background": "#e8ddd0",
-        "unfocusedBackground": "#ddd2c6"
-      }
-    },
-    {
-      "name": "Blueprint",
+      "name": "Classic",
       "window": {
         "applicationTheme": "dark",
         "useMica": false
       },
       "tab": {
         "background": "#ffffff",
-        "unfocusedBackground": "#f4f7fb",
+        "unfocusedBackground": "#f5f5f5",
+        "showCloseButton": "hover"
+      },
+      "tabRow": {
+        "background": "#f3f3f3",
+        "unfocusedBackground": "#ededed"
+      }
+    },
+    {
+      "name": "Mist",
+      "window": {
+        "applicationTheme": "dark",
+        "useMica": false
+      },
+      "tab": {
+        "background": "#ffffff",
+        "unfocusedBackground": "#f2f2f2",
+        "showCloseButton": "hover"
+      },
+      "tabRow": {
+        "background": "#efefef",
+        "unfocusedBackground": "#e7e7e7"
+      }
+    },
+    {
+      "name": "Slate",
+      "window": {
+        "applicationTheme": "dark",
+        "useMica": false
+      },
+      "tab": {
+        "background": "#ffffff",
+        "unfocusedBackground": "#ececec",
         "showCloseButton": "always"
       },
       "tabRow": {
-        "background": "#dce8f5",
-        "unfocusedBackground": "#cfdff0"
+        "background": "#e5e5e5",
+        "unfocusedBackground": "#dcdcdc"
       }
     }
   ],

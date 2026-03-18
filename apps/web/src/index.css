@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Cascadia Mono';
+  src:
+    local('Cascadia Mono'),
+    local('CascadiaMono');
+  font-display: swap;
+}
+
 :root {
   --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.12);
