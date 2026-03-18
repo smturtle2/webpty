@@ -20,7 +20,9 @@ Rust binary: `webpty up` starts the embedded web UI and the PTY runtime
 together.
 
 The app is intentionally smaller than Windows Terminal, but it now runs a real
-Rust PTY backend instead of a mock transcript transport.
+Rust PTY backend instead of a mock transcript transport. Startup lands directly
+in the shell prompt, and non-Windows fallbacks preserve profile-shaped prompts
+instead of collapsing to `bash-5.2$`.
 
 Settings resolution order is:
 
