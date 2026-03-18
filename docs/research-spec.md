@@ -18,7 +18,7 @@ Included:
 - one dominant terminal viewport
 - narrow right-side session rail
 - rail show/hide toggle
-- split creation from the rail
+- split creation within the active tab
 - a right-side settings workspace tab
 - dedicated Theme Studio for shell chrome editing
 - dedicated Profile Studio for launch and font editing

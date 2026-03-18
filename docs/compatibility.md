@@ -86,7 +86,7 @@ Action fields currently mapped by the frontend:
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
 - the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
-- the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
+- the in-app settings workspace stays reachable from its own pinned rail tab rather than overlaying the shell
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
 - the in-app Language section persists `webpty.language` as `system` or a registered locale code
@@ -100,9 +100,9 @@ Action fields currently mapped by the frontend:
 - Profile Studio and Theme Studio previews reuse the same profile-family prompt heuristics as the runtime shell launch path
 - prompt previews now sanitize `{profile}` the same way the runtime shell launch path does
 - prompt previews preserve literal template spacing instead of trimming trailing spaces away
-- `webpty up --funnel` exposes the same Rust process through Tailscale Funnel and first attempts `tailscale up` automatically when the local client is offline
+- `webpty up --funnel` exposes the same Rust process through Tailscale Funnel and first attempts automatic CLI install on supported hosts when `tailscale` is missing, then runs `tailscale up` when the local client is offline
 - `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` for headless bootstrap flows and otherwise surfaces the interactive login URL when needed
-- `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
+- `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely, and `::1` is accepted as an explicit IPv6 loopback bind
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
@@ -111,6 +111,8 @@ Action fields currently mapped by the frontend:
 - profile launch uses the configured `commandline` when possible
 - sessions start at the real shell prompt with no synthetic startup banner injected into the transcript
 - on non-Windows hosts, plain shell profile commandlines such as `bash`, `sh`, `zsh`, and `fish` are normalized onto prompt-aware interactive launches when possible
+- plain `fish` launches now install a fish-native prompt override so the selected profile prompt survives startup
+- host-generated Bash/Zsh/Fish defaults now use profile-named prompt templates so those seeded shells stay visually distinct
 - default zsh host-shell launches also use a clean interactive path so host startup files do not immediately override the profile-shaped prompt
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - session preview lines strip terminal control sequences before they reach the API or the demo fallback
@@ -123,8 +125,9 @@ Action fields currently mapped by the frontend:
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
 - Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
 - the shipped UI keeps the terminal dominant, the right rail thin and hideable, and the settings workspace as a full tab rather than a floating overlay
-- the right rail now uses icon-first tabs with safe collapsed bounds so the toggle does not escape the viewport
+- the right rail now uses icon-first tabs with safe collapsed bounds, a pinned settings tab, and no persistent action stack
 - the terminal viewport now reruns fit passes after mount and font load so narrow/mobile shells settle onto the visible width instead of keeping the initial off-canvas geometry
+- Theme Studio previews the same right-rail shell geometry the app ships, rather than a top tab strip
 - split panes keep subtle separators and active borders without floating badge chrome
 
 ## Known Gaps

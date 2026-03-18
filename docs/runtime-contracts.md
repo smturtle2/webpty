@@ -98,6 +98,8 @@ Notes:
 - if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`
 - the runtime does not inject a synthetic startup banner before the shell prompt
 - on non-Windows hosts, plain shell profile commandlines are normalized toward prompt-aware interactive launches, and platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
+- plain `fish` launches also inject a fish-native prompt override so the selected profile prompt survives startup
+- host-generated Bash/Zsh/Fish defaults use profile-named prompt templates so seeded shells stay visibly distinct from each other
 - default zsh host-shell launches also use a clean interactive path so host startup files do not immediately override the profile-shaped prompt
 - `cwd` token expansion accepts only directories; existing file paths fall back to the current working directory
 
@@ -148,12 +150,14 @@ Connection behavior:
 - the UI can still fall back to demo mode if the backend is unavailable
 - the backend is a real PTY runtime that also serves the production shell bundle
 - profile and theme definitions remain the main source of truth
-- `webpty up --funnel` depends on the local `tailscale` client and a node with Funnel capability, and it first attempts `tailscale up` automatically when the client is offline
+- `webpty up --funnel` depends on the local `tailscale` client and a node with Funnel capability, and it first attempts automatic CLI install on supported hosts when `tailscale` is missing, then runs `tailscale up` automatically when the client is offline
 - `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` during automatic bootstrap and otherwise prints the interactive auth URL when login is still required
+- Funnel host validation accepts IPv4 loopback, `localhost`, all-interface binds, and explicit IPv6 loopback (`::1`)
 - `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit, including timeout / SIGTERM-style shutdown paths
-- the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
+- the settings surfaces stay reachable from a dedicated rail tab instead of overlaying the terminal stage
 - the settings workspace includes Theme, Profile, Language, JSON, and Shortcut sections
 - the frontend uses `hostPlatform` from `/api/health` to keep Profile Studio command and directory placeholders host-aware
 - the frontend can persist `webpty.language` as `system` or a registered locale code, and unknown saved codes fall back to the default shipped locale in the UI
+- Theme Studio previews the same right-rail shell geometry that ships in the runtime UI
 - split panes keep subtle separators and active-pane framing inside the terminal workspace
 - advanced pane graphs, search, and command palette remain future milestones

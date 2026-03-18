@@ -1909,11 +1909,11 @@ select.field-input {
 }
 
 .terminal-shell {
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) 34px;
 }
 
 .terminal-shell.is-rail-collapsed {
-  grid-template-columns: minmax(0, 1fr) 18px;
+  grid-template-columns: minmax(0, 1fr) 10px;
 }
 
 .settings-workspace {
@@ -1958,6 +1958,9 @@ select.field-input {
 .drawer-nav {
   padding: 12px 8px;
   background: #f3f3f3;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .drawer-nav-item {
@@ -1991,23 +1994,116 @@ select.field-input {
   border-radius: 8px;
 }
 
-.theme-preview-strip {
-  min-height: 36px;
-  padding: 6px 10px 0;
-}
-
-.theme-preview-tab {
-  min-width: 68px;
-  min-height: 24px;
-  border-radius: 7px 7px 0 0;
-  font-size: 10px;
-}
-
 .theme-preview-terminal,
 .profile-preview-terminal,
 .settings-editor {
   font-size: 12px;
   line-height: 1.58;
+}
+
+.theme-preview {
+  background: #f7f7f7;
+}
+
+.theme-preview-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  min-height: 148px;
+}
+
+.theme-preview-stage {
+  position: relative;
+  display: grid;
+  align-content: end;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+}
+
+.theme-preview-terminal {
+  min-height: 0;
+  padding: 0;
+}
+
+.theme-preview-command {
+  display: block;
+}
+
+.theme-preview-settings-card {
+  width: min(240px, 100%);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--theme-preview-unfocused-frame, #cfcfcf);
+  border-radius: 8px;
+  color: #111;
+}
+
+.theme-preview-panel-label {
+  display: inline-block;
+  color: #6a6a6a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.theme-preview-settings-card strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.theme-preview-settings-card span:last-child {
+  color: #5a5a5a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.theme-preview-rail {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 6px 2px 6px 0;
+  border-left: 1px solid
+    color-mix(in srgb, var(--theme-preview-unfocused-frame, #d2d2d2) 72%, transparent);
+}
+
+.theme-preview-rail-toggle {
+  justify-self: center;
+  width: 12px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-preview-unfocused-frame, #d2d2d2) 82%, white 18%);
+}
+
+.theme-preview-rail-tab {
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-right: 0;
+  border-radius: 7px 0 0 7px;
+  color: #111;
+}
+
+.theme-preview-rail-tab.is-active {
+  box-shadow: inset 1px 0 0 rgba(17, 17, 17, 0.04);
+}
+
+.theme-preview-rail-tab svg {
+  width: 12px;
+  height: 12px;
+}
+
+.theme-preview-rail-tab .profile-glyph.is-compact {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  font-size: 6px;
 }
 
 .field-grid,
@@ -2058,8 +2154,9 @@ select.field-input {
 }
 
 .session-rail {
-  gap: 4px;
-  padding: 6px 2px 6px 4px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 3px;
+  padding: 6px 0 6px 2px;
   border-left: 1px solid #d7d7d7;
   background: #f3f3f3;
 }
@@ -2071,25 +2168,25 @@ select.field-input {
 
 .rail-toggle,
 .rail-action {
-  min-height: 28px;
-  border-radius: 8px;
+  min-height: 24px;
+  border-radius: 6px;
   background: #ffffff;
 }
 
 .rail-toggle svg,
 .rail-action svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .rail-tab {
-  min-height: 70px;
+  min-height: 54px;
   display: grid;
   justify-items: center;
   align-content: center;
   gap: 0;
-  padding: 10px 0;
-  border-radius: 10px 0 0 10px;
+  padding: 7px 0;
+  border-radius: 7px 0 0 7px;
   background: #f6f6f6;
 }
 
@@ -2098,23 +2195,23 @@ select.field-input {
 }
 
 .rail-tab::before {
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
 }
 
 .rail-tab-status {
-  top: 7px;
-  right: 6px;
-  width: 5px;
-  height: 5px;
+  top: 5px;
+  right: 4px;
+  width: 4px;
+  height: 4px;
 }
 
 .rail-tab-icon .profile-glyph.is-compact {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  font-size: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  font-size: 7px;
 }
 
 .rail-tab-copy {
@@ -2122,25 +2219,25 @@ select.field-input {
 }
 
 .rail-tab-meta {
-  right: 6px;
-  bottom: 6px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 4px;
-  font-size: 7px;
+  right: 4px;
+  bottom: 4px;
+  min-width: 11px;
+  height: 11px;
+  padding: 0 3px;
+  font-size: 6px;
 }
 
 .rail-tab-close {
-  top: 4px;
-  left: 4px;
-  width: 16px;
-  height: 16px;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
 }
 
 .rail-tab-close svg {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 .session-rail.is-collapsed {
@@ -2151,15 +2248,14 @@ select.field-input {
   justify-items: center;
 }
 
-.session-rail.is-collapsed .rail-action-settings,
 .session-rail.is-collapsed .rail-list,
 .session-rail.is-collapsed .rail-footer {
   display: none;
 }
 
 .session-rail.is-collapsed .rail-toggle {
-  width: 14px;
-  min-height: 28px;
+  width: 12px;
+  min-height: 24px;
   border-color: transparent;
   background: transparent;
 }
@@ -2227,11 +2323,11 @@ select.field-input {
 
 @media (max-width: 960px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-columns: minmax(0, 1fr) 34px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 18px;
+    grid-template-columns: minmax(0, 1fr) 10px;
   }
 
   .drawer-layout,
@@ -2248,19 +2344,19 @@ select.field-input {
 
 @media (max-width: 640px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-columns: minmax(0, 1fr) 30px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 18px;
+    grid-template-columns: minmax(0, 1fr) 10px;
   }
 
   .session-rail {
-    padding-left: 2px;
+    padding-left: 0;
   }
 
   .rail-tab {
-    min-height: 62px;
+    min-height: 50px;
   }
 
   .toolbar-button,

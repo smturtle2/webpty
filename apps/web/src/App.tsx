@@ -118,7 +118,6 @@ function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline')
   const [systemAppearance, setSystemAppearance] = useState<'dark' | 'light'>(resolveAppearance())
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>('terminal')
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [activeSettingsSection, setActiveSettingsSection] =
     useState<SettingsSection>('appearance')
   const [isRailCollapsed, setIsRailCollapsed] = useState(() => {
@@ -204,7 +203,6 @@ function App() {
   const draftColorPalette = buildColorReferencePalette(profileDraft, profileDraftScheme)
   const visibleProfileCount = profileCatalog.filter((profile) => !profile.hidden).length
   const actionBindings = resolveActionBindings(settings.actions)
-  const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
     { command: copy.shortcutNewTab, keys: actionLabel(actionBindings.newTab) },
     { command: copy.shortcutCloseTab, keys: actionLabel(actionBindings.closeTab) },
@@ -443,21 +441,16 @@ function App() {
 
   function closeSettingsWorkspace() {
     setActiveWorkspace('terminal')
-    setIsSettingsOpen(false)
   }
 
   function openSettingsWorkspace(section: SettingsSection) {
     setIsRailCollapsed(false)
     setActiveSettingsSection(section)
-    setIsSettingsOpen(true)
     setActiveWorkspace('settings')
   }
 
   function cycleWorkspace(direction: 1 | -1) {
-    const workspaceOrder = [
-      ...tabs.map((tab) => tab.id),
-      ...(isSettingsOpen ? [SETTINGS_WORKSPACE_ID] : []),
-    ]
+    const workspaceOrder = [...tabs.map((tab) => tab.id), SETTINGS_WORKSPACE_ID]
 
     if (workspaceOrder.length <= 1) {
       return
@@ -482,7 +475,7 @@ function App() {
   }
 
   function closeCurrentWorkspace() {
-    if (activeWorkspace === 'settings' && isSettingsOpen) {
+    if (activeWorkspace === 'settings') {
       closeSettingsWorkspace()
       return
     }
@@ -1155,53 +1148,93 @@ function App() {
                       } as CSSProperties
                     }
                   >
-                    <div
-                      className="theme-preview-strip"
-                      style={{
-                        background: resolveColorReference(
-                          themeDraft.tabRow?.background,
-                          activeColorPalette,
-                          '#efefef',
-                        ),
-                      }}
-                    >
-                      <span
-                        className="theme-preview-tab is-active"
+                    <div className="theme-preview-shell">
+                      <div
+                        className="theme-preview-stage"
+                        style={{
+                          background: activeScheme.background,
+                          color: activeScheme.foreground,
+                        }}
+                      >
+                        <div className="theme-preview-terminal">
+                          <span className="theme-preview-command">
+                            {composePreviewCommand(
+                              activeProfile,
+                              normalizePromptCwd(activeSession.cwd),
+                              'npm run build',
+                            )}
+                          </span>
+                        </div>
+                        <div
+                          className="theme-preview-settings-card"
+                          style={{
+                            background: resolveColorReference(
+                              themeDraft.tab?.background,
+                              activeColorPalette,
+                              '#ffffff',
+                            ),
+                            borderColor: resolveColorReference(
+                              themeDraft.window?.unfocusedFrame,
+                              activeColorPalette,
+                              '#cfcfcf',
+                            ),
+                          }}
+                        >
+                          <span className="theme-preview-panel-label">
+                            {copy.themeStudioTitle}
+                          </span>
+                          <strong>{themeDraft.name}</strong>
+                          <span>{copy.themeFieldsDescription}</span>
+                        </div>
+                      </div>
+                      <div
+                        className="theme-preview-rail"
                         style={{
                           background: resolveColorReference(
-                            themeDraft.tab?.background,
+                            themeDraft.tabRow?.background,
                             activeColorPalette,
-                            '#ffffff',
+                            '#efefef',
                           ),
                         }}
                       >
-                        {copy.selectedTab}
-                      </span>
-                      <span
-                        className="theme-preview-tab"
-                        style={{
-                          background: resolveColorReference(
-                            themeDraft.tab?.unfocusedBackground,
-                            activeColorPalette,
-                            '#f4f4f4',
-                          ),
-                        }}
-                      >
-                        {copy.idleTab}
-                      </span>
-                    </div>
-                    <div
-                      className="theme-preview-terminal"
-                      style={{
-                        background: activeScheme.background,
-                        color: activeScheme.foreground,
-                      }}
-                    >
-                      {composePreviewCommand(
-                        activeProfile,
-                        normalizePromptCwd(activeSession.cwd),
-                        'npm run build',
-                      )}
+                        <span className="theme-preview-rail-toggle" />
+                        <span
+                          className="theme-preview-rail-tab is-active"
+                          style={{
+                            background: resolveColorReference(
+                              themeDraft.tab?.background,
+                              activeColorPalette,
+                              '#ffffff',
+                            ),
+                          }}
+                        >
+                          <SettingsGlyph />
+                        </span>
+                        <span
+                          className="theme-preview-rail-tab"
+                          style={{
+                            background: resolveColorReference(
+                              themeDraft.tab?.unfocusedBackground,
+                              activeColorPalette,
+                              '#f4f4f4',
+                            ),
+                          }}
+                        >
+                          <ProfileGlyph profile={activeProfile} compact />
+                        </span>
+                        <span
+                          className="theme-preview-rail-tab"
+                          style={{
+                            background: resolveColorReference(
+                              themeDraft.tab?.unfocusedBackground,
+                              activeColorPalette,
+                              '#f4f4f4',
+                            ),
+                          }}
+                        >
+                          <ProfileGlyph profile={defaultProfile} compact />
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1932,53 +1965,35 @@ function App() {
             >
               <RailToggleIcon collapsed={isRailCollapsed} />
             </button>
-
-            {!isSettingsOpen ? (
-              <button
-                type="button"
-                className={`rail-action rail-action-settings ${
-                  activeWorkspace === 'settings' ? 'is-active' : ''
-                }`}
-                aria-label={copy.openSettings}
-                title={copy.openSettings}
-                onClick={() => revealSettings('appearance')}
-              >
-                <SettingsGlyph />
-              </button>
-            ) : null}
           </div>
 
           <div className="rail-list" role="tablist" aria-label={copy.workspaces}>
-            {isSettingsOpen ? (
-              <div className={`rail-tab-shell ${activeWorkspace === 'settings' ? 'is-active' : ''}`}>
-                <button
-                  type="button"
-                  className="rail-tab rail-tab-settings"
-                  role="tab"
-                  aria-selected={activeWorkspace === 'settings'}
-                  aria-label={copy.settingsTab}
-                  title={settingsSectionMeta.label}
-                  onClick={() => setActiveWorkspace('settings')}
-                >
-                  <span className="rail-tab-status rail-tab-status-settings" />
-                  <span className="rail-tab-icon">
-                    <SettingsGlyph />
-                  </span>
-                  <span className="rail-tab-copy">{settingsRailLabel}</span>
-                </button>
+            <div className={`rail-tab-shell ${activeWorkspace === 'settings' ? 'is-active' : ''}`}>
+              <button
+                type="button"
+                className="rail-tab rail-tab-settings"
+                role="tab"
+                aria-selected={activeWorkspace === 'settings'}
+                aria-label={copy.settingsTab}
+                title={
+                  activeWorkspace === 'settings' ? copy.closeSettings : settingsSectionMeta.label
+                }
+                onClick={() => {
+                  if (activeWorkspace === 'settings') {
+                    closeSettingsWorkspace()
+                    return
+                  }
 
-                {closeButtonMode !== 'never' ? (
-                  <button
-                    type="button"
-                    className="rail-tab-close"
-                    onClick={closeSettingsWorkspace}
-                    aria-label={copy.closeSettings}
-                  >
-                    <CloseGlyph />
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+                  revealSettings(activeSettingsSection)
+                }}
+              >
+                <span className="rail-tab-status rail-tab-status-settings" />
+                <span className="rail-tab-icon">
+                  <SettingsGlyph />
+                </span>
+                <span className="rail-tab-copy">{settingsRailLabel}</span>
+              </button>
+            </div>
 
             {tabs.map((tab) => {
               const primarySession =
@@ -2028,47 +2043,6 @@ function App() {
                 </div>
               )
             })}
-          </div>
-
-          <div className="rail-footer">
-            <button
-              type="button"
-              className="rail-action is-primary"
-              aria-label={copy.newTab}
-              title={copy.newTab}
-              onClick={() => void createSession()}
-            >
-              <NewTabGlyph />
-            </button>
-            <button
-              type="button"
-              className="rail-action"
-              aria-label={copy.splitVertical}
-              title={copy.splitVertical}
-              disabled={!canSplitActiveTab}
-              onClick={() => void createSession(activeProfile.id, 'vertical')}
-            >
-              <SplitVerticalGlyph />
-            </button>
-            <button
-              type="button"
-              className="rail-action"
-              aria-label={copy.splitHorizontal}
-              title={copy.splitHorizontal}
-              disabled={!canSplitActiveTab}
-              onClick={() => void createSession(activeProfile.id, 'horizontal')}
-            >
-              <SplitHorizontalGlyph />
-            </button>
-            <button
-              type="button"
-              className={`rail-action ${activeWorkspace === 'settings' ? 'is-active' : ''}`}
-              aria-label={copy.editSettingsJson}
-              title={copy.editSettingsJson}
-              onClick={() => revealSettings('json')}
-            >
-              <CodeGlyph />
-            </button>
           </div>
         </aside>
       </section>
@@ -3607,80 +3581,6 @@ function CloseGlyph() {
         stroke="currentColor"
         strokeLinecap="round"
         strokeWidth="1.4"
-      />
-    </svg>
-  )
-}
-
-function NewTabGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M8 3.4v9.2M3.4 8h9.2"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  )
-}
-
-function SplitVerticalGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect
-        x="2.8"
-        y="3.3"
-        width="10.4"
-        height="9.4"
-        rx="1.7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-      <path
-        d="M8 3.8v8.4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-    </svg>
-  )
-}
-
-function SplitHorizontalGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect
-        x="2.8"
-        y="3.3"
-        width="10.4"
-        height="9.4"
-        rx="1.7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-      <path
-        d="M3.4 8h9.2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-    </svg>
-  )
-}
-
-function CodeGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M6.25 4.2 3.9 8l2.35 3.8M9.75 4.2 12.1 8l-2.35 3.8M8.7 3.5 7.3 12.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.3"
       />
     </svg>
   )

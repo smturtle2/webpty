@@ -46,10 +46,10 @@ Implemented:
 - embedded production UI served directly by the Rust binary
 - `webpty up` CLI entrypoint for local startup
 - `webpty up --funnel` external access through Tailscale Funnel
-- automatic `tailscale up` bootstrap for `webpty up --funnel`, with login URL handoff when interactive auth is still required
+- automatic Tailscale install/bootstrap for `webpty up --funnel` on supported hosts, with login URL handoff when interactive auth is still required
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
-- tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
+- tighter Windows 11-aligned rail density with white flat tab surfaces, a pinned settings workspace tab, and no persistent rail action cluster
 - dedicated Theme Studio for `themes[]`, `theme`, frame colors, and shell chrome editing
 - dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
 - dedicated Language section backed by `webpty.language` for registry-backed UI copy selection
@@ -69,6 +69,8 @@ Implemented:
 - literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
 - prompt-template previews now sanitize `{profile}` with the same rules as the runtime shell path
 - per-profile prompt shaping on non-Windows shell launches and fallbacks so sessions do not collapse to `bash-5.2$`
+- seeded Bash, Zsh, and Fish profiles now keep visibly distinct prompt labels instead of collapsing onto the same host token
+- fish profile launches now install a fish-native prompt override so the runtime prompt matches the selected profile
 - default zsh host launches now use a clean interactive path so macOS-style defaults do not override profile-shaped prompts immediately
 - host-scoped default settings generation so first-run profiles follow the runtime OS instead of shipping Windows-only launch commands everywhere
 - host-native default settings paths, including `~/Library/Application Support/webpty/settings.json` on macOS
@@ -146,13 +148,13 @@ webpty up --funnel
 ```
 
 `--funnel` uses the local `tailscale` CLI to publish the embedded web UI. If the
-local client is offline, `webpty` first attempts `tailscale up` automatically
-before allocating Funnel. For headless bootstrap flows, `webpty` also honors
+local CLI is missing on a supported host, `webpty` first attempts to install it,
+then runs `tailscale up` automatically before allocating Funnel. For headless bootstrap flows, `webpty` also honors
 `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY`.
 If interactive login is still required, `webpty` prints the Tailscale auth URL
 and exits cleanly. Treat Funnel as public exposure of the shell surface and only
 use it behind a trusted machine and network policy.
-Keep `--host` on loopback or all interfaces when using `--funnel`.
+Keep `--host` on loopback or all interfaces when using `--funnel`; `::1` is also accepted.
 
 ## Settings Path
 

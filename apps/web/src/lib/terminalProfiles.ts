@@ -159,24 +159,20 @@ export function resolveUiTheme(
   )
   const tabStrip = resolveColorReference(selectedTheme?.tabRow?.background, palette, '#efefef')
   const frame = resolveColorReference(selectedTheme?.window?.frame, palette, tabStrip)
-  const chrome = usesMica ? alpha(mix(tabStrip, '#ffffff', 0.2), 0.82) : tabStrip
-  const chromeAlt = usesMica ? alpha(mix(tabActive, '#ffffff', 0.08), 0.9) : tabActive
-  const panelBase = mix(tabStrip, tabActive, 0.54)
-  const panel = usesMica ? alpha(panelBase, 0.82) : panelBase
-  const surfaceBase = mix(tabActive, '#ffffff', 0.9)
-  const surface = usesMica ? alpha(surfaceBase, 0.88) : surfaceBase
-  const window = usesMica ? alpha(mix(frame, '#ffffff', 0.46), 0.74) : mix(frame, '#ffffff', 0.46)
-  const text = readableText(surfaceBase)
+  const chrome = usesMica ? mix(tabStrip, frame, 0.14) : tabStrip
+  const chromeAlt = usesMica ? mix(tabActive, frame, 0.08) : tabActive
+  const panel = usesMica ? mix(tabStrip, tabActive, 0.48) : mix(tabStrip, tabActive, 0.34)
+  const surface = usesMica ? mix(tabActive, '#ffffff', 0.9) : mix(tabActive, '#ffffff', 0.94)
+  const window = usesMica ? mix(frame, '#ffffff', 0.36) : mix(frame, '#ffffff', 0.46)
+  const text = readableText(surface)
 
   return {
-    appBackground: usesMica ? mix(scheme.background, '#050505', 0.68) : '#000000',
-    backgroundGlow: usesMica
-      ? `radial-gradient(circle at 120% 0%, ${alpha(accent, 0.22)} 0, transparent 34%), radial-gradient(circle at -10% 100%, ${alpha(frame, 0.18)} 0, transparent 28%)`
-      : 'transparent',
+    appBackground: '#000000',
+    backgroundGlow: 'transparent',
     window,
     chrome,
     chromeAlt,
-    chromeBackdrop: usesMica ? 'blur(26px) saturate(165%)' : 'none',
+    chromeBackdrop: 'none',
     surface,
     panel,
     terminalBackground: scheme.background,

@@ -103,7 +103,7 @@ def capture(base_url: str, out_dir: Path) -> None:
 
         page.screenshot(path=str(out_dir / "webpty-preview.png"), full_page=True)
 
-        page.get_by_role("button", name="Open settings").click()
+        page.get_by_role("tab", name="Settings").click()
         page.wait_for_timeout(200)
 
         page.screenshot(path=str(out_dir / "webpty-studio.png"), full_page=True)
@@ -128,7 +128,7 @@ def capture(base_url: str, out_dir: Path) -> None:
             viewport={"width": 480, "height": 900}, device_scale_factor=1
         )
         mobile_page.goto(base_url, wait_until="networkidle")
-        mobile_page.get_by_role("button", name="Open settings").click()
+        mobile_page.get_by_role("tab", name="Settings").click()
         mobile_page.wait_for_timeout(200)
         mobile_page.screenshot(
             path=str(out_dir / "webpty-mobile-settings.png"), full_page=True

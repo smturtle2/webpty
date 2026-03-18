@@ -17,6 +17,9 @@ This pass checked the repo against the current product constraints:
 - removed hardcoded external `$schema` URLs from generated defaults, demo data, and the repo sample while keeping user-provided `$schema` values round-trippable
 - fixed Theme Studio / Profile Studio helper copy so it no longer inherits the uppercase field-label styling
 - cleared the remaining frontend lint warnings around `useEffectEvent` dependencies in the xterm viewport
+- moved the right rail to a tab-only treatment with a pinned settings tab instead of a separate settings action cluster
+- rebuilt Theme Studio previews around the same right-rail shell geometry the shipped app uses
+- made the settings navigation column scrollable so short viewports and future sections do not clip the list
 - rebuilt the embedded frontend bundle so the Rust runtime serves the current shell UI instead of stale assets
 - revalidated the runtime contracts that matter for this spec: `webpty up`, `webpty up --funnel`, shared settings loading, and per-profile prompt shaping
 - sanitized session preview summaries so PTY control sequences no longer leak through `/api/sessions`
@@ -27,8 +30,11 @@ This pass checked the repo against the current product constraints:
 - fixed profile color-scheme selection so the editor reflects the profile being edited rather than the active shell
 - fixed Theme Studio and Profile Studio color fields so full token and hex values stay visible instead of clipping down to a `#` stub
 - upgraded `webpty up --funnel` so it attempts `tailscale up` automatically, supports auth-key env handoff, and reports interactive login URLs cleanly
+- extended `webpty up --funnel` further so it can attempt supported host-side Tailscale CLI installation before `tailscale up`, and it now accepts `::1` as an explicit loopback bind
 - extended Funnel shutdown cleanup beyond Ctrl-C so timeout / SIGTERM-style exits do not leave a public mapping behind
 - normalized plain non-Windows shell profiles such as `bash` onto prompt-aware interactive launches instead of only fixing fallback shells
+- added a fish-native prompt bootstrap so plain `fish` launches keep the selected profile prompt instead of falling back to fish defaults
+- updated host-generated Bash/Zsh/Fish defaults so the seeded prompts stay visibly distinct from each other
 - normalized default zsh host-shell launches onto a clean interactive path so runtime prompt shaping survives macOS-style shell defaults
 - moved the repo sample settings file to an explicit `--settings` path so installed runs default to the user-scoped settings file
 - switched generated first-run settings from a Windows-only profile catalog to host-scoped defaults so Linux/macOS seed local shells immediately
@@ -65,7 +71,7 @@ This pass checked the repo against the current product constraints:
 - host-scoped default profile generation and host-native settings paths
 - runtime host-aware placeholder hints inside Profile Studio
 - stable Theme/Profile draft syncing without recursive render-loop churn
-- icon-first right rail with safe collapsed bounds
+- icon-first right rail with safe collapsed bounds and a pinned settings tab
 - subtle split-pane separators and active-pane framing inside the terminal workspace
 - broader text-overflow protection in the right rail and settings workspace
 - sentence-case helper copy inside the Theme/Profile studios

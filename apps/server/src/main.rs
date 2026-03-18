@@ -49,6 +49,8 @@ const BASH_PROFILE_GUID: &str = "{06de9c22-d6f1-43f4-a8dc-c7a29b18ab10}";
 const ZSH_PROFILE_GUID: &str = "{7e5f0ec3-5f15-4fc6-ae0f-571dfd6eb0cc}";
 const FISH_PROFILE_GUID: &str = "{9d7f8ab8-01b7-44f4-a4c8-488d04408ad6}";
 const WEB_UI_FINGERPRINT: &str = env!("WEBPTY_UI_FINGERPRINT");
+#[cfg(not(windows))]
+const FISH_PROMPT_BOOTSTRAP_SCRIPT: &str = "function fish_prompt; set -l webpty_prompt \"$WEBPTY_FISH_PROMPT_TEMPLATE\"; if test -z \"$webpty_prompt\"; set webpty_prompt '{cwd}{symbol} '; end; set -l webpty_cwd (prompt_pwd); set -l webpty_dir (basename -- \"$PWD\"); set -l webpty_user \"$USER\"; if test -z \"$webpty_user\"; set webpty_user (whoami); end; set -l webpty_host \"$WEBPTY_FISH_PROMPT_HOST\"; if test -z \"$webpty_host\"; set webpty_host (prompt_hostname); end; set -l webpty_profile \"$WEBPTY_FISH_PROMPT_PROFILE\"; if test -z \"$webpty_profile\"; set webpty_profile webpty; end; set -l webpty_name \"$WEBPTY_FISH_PROMPT_NAME\"; if test -z \"$webpty_name\"; set webpty_name $webpty_profile; end; set -l webpty_symbol '$'; if fish_is_root_user; set webpty_symbol '#'; end; set webpty_prompt (string replace -a -- '{cwd}' \"$webpty_cwd\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{dir}' \"$webpty_dir\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{user}' \"$webpty_user\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{host}' \"$webpty_host\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{profile}' \"$webpty_profile\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{name}' \"$webpty_name\" \"$webpty_prompt\"); set webpty_prompt (string replace -a -- '{symbol}' \"$webpty_symbol\" \"$webpty_prompt\"); printf '%s' \"$webpty_prompt\"; end";
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -773,7 +775,10 @@ fn default_up_options() -> UpOptions {
 }
 
 fn supports_funnel_host(host: &str) -> bool {
-    matches!(host, "127.0.0.1" | "0.0.0.0" | "::" | "[::]" | "localhost")
+    matches!(
+        host,
+        "127.0.0.1" | "::1" | "0.0.0.0" | "::" | "[::]" | "localhost"
+    )
 }
 
 fn root_usage() -> String {
@@ -940,7 +945,7 @@ async fn ensure_tailscale_ready() -> Result<JsonValue, Box<dyn std::error::Error
             eprintln!(
                 "webpty funnel: failed to read Tailscale status ({error}); attempting automatic setup"
             );
-            bootstrap_tailscale().await?;
+            attempt_tailscale_setup(&*error).await?;
             attempted_bootstrap = true;
             run_tailscale_json(["status", "--json"]).await?
         }
@@ -952,7 +957,7 @@ async fn ensure_tailscale_ready() -> Result<JsonValue, Box<dyn std::error::Error
             eprintln!(
                 "webpty funnel: preparing Tailscale with `tailscale up` (BackendState = `{backend_state}`)"
             );
-            bootstrap_tailscale().await?;
+            attempt_tailscale_setup_message(backend_state).await?;
             status = run_tailscale_json(["status", "--json"]).await?;
             backend_state = tailscale_backend_state(&status);
         }
@@ -972,6 +977,27 @@ fn tailscale_backend_state(status: &JsonValue) -> &str {
         .unwrap_or_default()
 }
 
+async fn attempt_tailscale_setup(
+    error: &dyn std::error::Error,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let message = error.to_string();
+    if tailscale_cli_missing_message(&message) {
+        install_tailscale_cli().await?;
+    }
+
+    bootstrap_tailscale().await
+}
+
+async fn attempt_tailscale_setup_message(
+    backend_state: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if backend_state.eq_ignore_ascii_case("no_state") && tailscale_binary_missing() {
+        install_tailscale_cli().await?;
+    }
+
+    bootstrap_tailscale().await
+}
+
 async fn bootstrap_tailscale() -> Result<(), Box<dyn std::error::Error>> {
     let auth_key = configured_tailscale_auth_key();
     let args = tailscale_up_args(auth_key.as_deref());
@@ -989,6 +1015,120 @@ async fn bootstrap_tailscale() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn tailscale_cli_missing_message(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("failed to execute `tailscale")
+        && (normalized.contains("no such file")
+            || normalized.contains("not found")
+            || normalized.contains("cannot find the file")
+            || normalized.contains("os error 2"))
+}
+
+fn tailscale_binary_missing() -> bool {
+    first_available_program(&["tailscale", "tailscale.exe"]).is_none()
+}
+
+async fn install_tailscale_cli() -> Result<(), Box<dyn std::error::Error>> {
+    let (program, args, display) = tailscale_install_command()?;
+
+    eprintln!("webpty funnel: attempting `{display}`");
+
+    let output = run_command(&program, &args, &display).await?;
+    if !output.is_empty() {
+        println!("{output}");
+    }
+
+    Ok(())
+}
+
+fn tailscale_install_command() -> Result<(String, Vec<String>, String), Box<dyn std::error::Error>>
+{
+    match runtime_host_platform() {
+        HostPlatform::Linux => {
+            let install_pipeline = if first_available_program(&["curl"]).is_some() {
+                "curl -fsSL https://tailscale.com/install.sh | sh"
+            } else if first_available_program(&["wget"]).is_some() {
+                "wget -qO- https://tailscale.com/install.sh | sh"
+            } else {
+                return Err(
+                    "tailscale is not installed and no supported downloader (`curl` or `wget`) is available for automatic setup."
+                        .into(),
+                );
+            };
+
+            if env::var("USER").ok().as_deref() == Some("root") {
+                return Ok((
+                    "sh".to_string(),
+                    vec!["-c".to_string(), install_pipeline.to_string()],
+                    format!("sh -c \"{install_pipeline}\""),
+                ));
+            }
+
+            if first_available_program(&["sudo"]).is_some() {
+                Ok((
+                    "sudo".to_string(),
+                    vec![
+                        "-n".to_string(),
+                        "sh".to_string(),
+                        "-c".to_string(),
+                        install_pipeline.to_string(),
+                    ],
+                    format!("sudo -n sh -c \"{install_pipeline}\""),
+                ))
+            } else {
+                Ok((
+                    "sh".to_string(),
+                    vec!["-c".to_string(), install_pipeline.to_string()],
+                    format!("sh -c \"{install_pipeline}\""),
+                ))
+            }
+        }
+        HostPlatform::MacOs => {
+            if first_available_program(&["brew"]).is_none() {
+                return Err(
+                    "tailscale is not installed and Homebrew is not available for automatic setup."
+                        .into(),
+                );
+            }
+
+            Ok((
+                "brew".to_string(),
+                vec![
+                    "install".to_string(),
+                    "--cask".to_string(),
+                    "tailscale".to_string(),
+                ],
+                "brew install --cask tailscale".to_string(),
+            ))
+        }
+        HostPlatform::Windows => {
+            if first_available_program(&["winget", "winget.exe"]).is_none() {
+                return Err(
+                    "tailscale is not installed and `winget` is not available for automatic setup."
+                        .into(),
+                );
+            }
+
+            Ok((
+                "winget".to_string(),
+                vec![
+                    "install".to_string(),
+                    "--id".to_string(),
+                    "Tailscale.Tailscale".to_string(),
+                    "--exact".to_string(),
+                    "--accept-source-agreements".to_string(),
+                    "--accept-package-agreements".to_string(),
+                ],
+                "winget install --id Tailscale.Tailscale --exact --accept-source-agreements --accept-package-agreements".to_string(),
+            ))
+        }
+        HostPlatform::Other => Err(
+            "automatic Tailscale setup is not supported on this host; install the `tailscale` CLI first."
+                .into(),
+        ),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1124,19 +1264,19 @@ async fn run_tailscale_json(
     Ok(serde_json::from_str(&output)?)
 }
 
-async fn run_tailscale_command(
-    args: impl IntoIterator<Item = impl Into<String>>,
+async fn run_command(
+    program: &str,
+    args: &[String],
+    display: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let args = args.into_iter().map(Into::into).collect::<Vec<String>>();
-    let display = display_tailscale_args(&args);
-    let output = TokioCommand::new("tailscale")
-        .args(&args)
+    let output = TokioCommand::new(program)
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|error| format!("failed to execute `tailscale {display}`: {error}"))?;
+        .map_err(|error| format!("failed to execute `{display}`: {error}"))?;
 
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
@@ -1152,7 +1292,15 @@ async fn run_tailscale_command(
         format!("process exited with status {}", output.status)
     };
 
-    Err(format!("`tailscale {display}` failed: {detail}").into())
+    Err(format!("`{display}` failed: {detail}").into())
+}
+
+async fn run_tailscale_command(
+    args: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let args = args.into_iter().map(Into::into).collect::<Vec<String>>();
+    let display = format!("tailscale {}", display_tailscale_args(&args));
+    run_command("tailscale", &args, &display).await
 }
 
 fn tailscale_bootstrap_error(status: &JsonValue, backend_state: &str) -> String {
@@ -2495,6 +2643,13 @@ fn default_shell_label() -> String {
 }
 
 #[cfg(not(windows))]
+struct PromptTemplateContext {
+    host_label: String,
+    profile_label: String,
+    profile_name: String,
+}
+
+#[cfg(not(windows))]
 fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&TerminalProfile>) {
     let prompt = profile_prompt(profile);
     let shell_program = builder
@@ -2510,6 +2665,13 @@ fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&TerminalP
     }
     if matches!(shell_program.as_deref(), Some("fish") | Some("fish.exe")) {
         builder.env("fish_greeting", "");
+        let context = prompt_template_context(profile);
+        builder.env("WEBPTY_FISH_PROMPT_TEMPLATE", resolved_prompt_template(profile));
+        builder.env("WEBPTY_FISH_PROMPT_HOST", context.host_label);
+        builder.env("WEBPTY_FISH_PROMPT_PROFILE", context.profile_label);
+        builder.env("WEBPTY_FISH_PROMPT_NAME", context.profile_name);
+        builder.arg("-C");
+        builder.arg(FISH_PROMPT_BOOTSTRAP_SCRIPT);
     }
 }
 
@@ -2569,12 +2731,18 @@ fn maybe_apply_primary_profile_prompt(
 
 #[cfg(not(windows))]
 fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
+    let template = resolved_prompt_template(profile);
+    render_posix_prompt_template(&template, &prompt_template_context(profile))
+}
+
+#[cfg(not(windows))]
+fn resolved_prompt_template(profile: Option<&TerminalProfile>) -> String {
     let Some(profile) = profile else {
-        return "\\w\\$ ".to_string();
+        return "{cwd}{symbol} ".to_string();
     };
 
-    if let Some(prompt) = configured_profile_prompt(profile) {
-        return prompt;
+    if let Some(template) = prompt_template_value(profile) {
+        return template.to_string();
     }
 
     let profile_name = profile.name.trim();
@@ -2587,41 +2755,52 @@ fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
 
     if normalized_name.contains("powershell") || commandline.contains("pwsh") {
         if normalized_name == "powershell" {
-            return "PS \\w> ".to_string();
+            return "PS {cwd}> ".to_string();
         }
 
         let label = sanitize_prompt_label(profile_name);
-        return format!("PS({label}) \\w> ");
+        return format!("PS({label}) {{cwd}}> ");
     }
 
     if let Some(host_label) = profile_host_label(profile_name, &commandline) {
-        return format!("\\u@{host_label}:\\w\\$ ");
+        return format!("{{user}}@{host_label}:{{cwd}}{{symbol}} ");
     }
 
     let label = sanitize_prompt_label(profile_name);
-    format!("[{label}] \\w\\$ ")
+    format!("[{label}] {{cwd}}{{symbol}} ")
 }
 
 #[cfg(not(windows))]
-fn configured_profile_prompt(profile: &TerminalProfile) -> Option<String> {
-    let template = prompt_template_value(profile)?;
+fn prompt_template_context(profile: Option<&TerminalProfile>) -> PromptTemplateContext {
+    let Some(profile) = profile else {
+        return PromptTemplateContext {
+            host_label: "shell".to_string(),
+            profile_label: "webpty".to_string(),
+            profile_name: "webpty".to_string(),
+        };
+    };
 
     let profile_name = profile.name.trim();
     let commandline = profile.commandline.as_deref().unwrap_or_default();
-    let host_label =
-        profile_host_label(profile_name, commandline).unwrap_or_else(|| "shell".to_string());
-    let sanitized_profile = sanitize_prompt_label(profile_name);
 
-    Some(
-        template
-            .replace("{cwd}", "\\w")
-            .replace("{dir}", "\\W")
-            .replace("{user}", "\\u")
-            .replace("{host}", &host_label)
-            .replace("{profile}", &sanitized_profile)
-            .replace("{name}", profile_name)
-            .replace("{symbol}", "\\$"),
-    )
+    PromptTemplateContext {
+        host_label: profile_host_label(profile_name, commandline)
+            .unwrap_or_else(|| "shell".to_string()),
+        profile_label: sanitize_prompt_label(profile_name),
+        profile_name: profile_name.to_string(),
+    }
+}
+
+#[cfg(not(windows))]
+fn render_posix_prompt_template(template: &str, context: &PromptTemplateContext) -> String {
+    template
+        .replace("{cwd}", "\\w")
+        .replace("{dir}", "\\W")
+        .replace("{user}", "\\u")
+        .replace("{host}", &context.host_label)
+        .replace("{profile}", &context.profile_label)
+        .replace("{name}", &context.profile_name)
+        .replace("{symbol}", "\\$")
 }
 
 #[cfg(not(windows))]
@@ -2660,14 +2839,16 @@ fn profile_host_label(profile_name: &str, commandline: &str) -> Option<String> {
         });
     }
 
-    if looks_posix_shell_prompt(&normalized_command) || is_generic_shell_label(&normalized_name) {
-        return Some(
-            if normalized_name.is_empty() || is_generic_shell_label(&normalized_name) {
-                "shell".to_string()
-            } else {
-                normalized_name
-            },
-        );
+    if looks_posix_shell_prompt(&normalized_command) {
+        if normalized_name.is_empty() || is_generic_shell_label(&normalized_name) {
+            return None;
+        }
+
+        return Some(normalized_name);
+    }
+
+    if is_generic_shell_label(&normalized_name) {
+        return None;
     }
 
     None
@@ -3308,7 +3489,7 @@ fn default_unix_profiles(host: HostPlatform) -> Vec<TerminalProfile> {
             Some("~"),
             "Campbell",
             "#3b78ff",
-            Some("{user}@{host}:{cwd}{symbol} "),
+            Some("[{name}] {cwd}{symbol} "),
         ),
     );
 
@@ -3350,7 +3531,7 @@ fn default_unix_profiles(host: HostPlatform) -> Vec<TerminalProfile> {
                     Some("~"),
                     scheme,
                     tab_color,
-                    Some("{user}@{host}:{cwd}{symbol} "),
+                    Some("[{name}] {cwd}{symbol} "),
                 ),
             );
         }
@@ -3665,6 +3846,47 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
+    fn generic_shell_profiles_keep_profile_identity_in_fallback_prompt() {
+        for (name, commandline, expected) in [
+            ("Bash", "bash", "[Bash] \\w\\$ "),
+            ("Zsh", "zsh", "[Zsh] \\w\\$ "),
+            ("Fish", "fish", "[Fish] \\w\\$ "),
+        ] {
+            let profile = TerminalProfile {
+                guid: None,
+                name: name.to_string(),
+                icon: None,
+                commandline: Some(commandline.to_string()),
+                starting_directory: None,
+                source: None,
+                hidden: None,
+                tab_color: None,
+                tab_title: None,
+                color_scheme: None,
+                font: None,
+                font_face: None,
+                font_size: None,
+                font_weight: None,
+                cell_height: None,
+                line_height: None,
+                cursor_shape: None,
+                opacity: None,
+                use_acrylic: None,
+                foreground: None,
+                background: None,
+                cursor_color: None,
+                selection_background: None,
+                padding: None,
+                webpty: None,
+                extra: JsonMap::new(),
+            };
+
+            assert_eq!(profile_prompt(Some(&profile)), expected);
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
     fn profile_prompt_prefers_explicit_webpty_prompt() {
         let profile = TerminalProfile {
             guid: None,
@@ -3842,6 +4064,61 @@ mod tests {
                 .iter()
                 .any(|note| note.contains("interactive bash shell")),
             "plain bash profiles should be normalized onto an interactive shell builder"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn build_launch_plan_normalizes_plain_fish_profiles() {
+        let profile = TerminalProfile {
+            guid: None,
+            name: "Fish".to_string(),
+            icon: None,
+            commandline: Some("fish".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            font: None,
+            font_face: None,
+            font_size: None,
+            font_weight: None,
+            cell_height: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
+            webpty: Some(WebptyProfileOptions {
+                prompt: Some("[{name}] {cwd}{symbol} ".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        };
+
+        let plan = build_launch_plan(&profile, None);
+        let argv = plan
+            .command
+            .get_argv()
+            .iter()
+            .filter_map(|value| value.to_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(argv.first().copied(), Some("fish"));
+        assert!(argv.contains(&"-i"));
+        assert!(argv.contains(&"-C"));
+        assert!(argv.iter().any(|value| value.contains("function fish_prompt")));
+        assert!(
+            plan.notes
+                .iter()
+                .any(|note| note.contains("interactive fish shell")),
+            "plain fish profiles should be normalized onto an interactive shell builder"
         );
     }
 
@@ -4057,6 +4334,13 @@ mod tests {
         assert_eq!(primary.name, "Bash");
         assert_eq!(primary.commandline.as_deref(), Some("/bin/bash"));
         assert_eq!(primary.starting_directory.as_deref(), Some("~"));
+        assert_eq!(
+            primary
+                .webpty
+                .as_ref()
+                .and_then(|options| options.prompt.as_deref()),
+            Some("[{name}] {cwd}{symbol} ")
+        );
         assert!(
             settings.profiles.list.iter().all(|profile| profile
                 .commandline
@@ -4335,6 +4619,11 @@ mod tests {
             display_tailscale_args(&args),
             format!("up --timeout={DEFAULT_TAILSCALE_UP_TIMEOUT} --auth-key=<redacted>")
         );
+    }
+
+    #[test]
+    fn supports_funnel_host_accepts_ipv6_loopback() {
+        assert!(supports_funnel_host("::1"));
     }
 
     #[test]

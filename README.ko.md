@@ -42,10 +42,10 @@
 - Rust 바이너리에서 직접 서빙되는 임베디드 프로덕션 UI
 - `webpty up` CLI 진입점
 - `webpty up --funnel` 외부 접속용 Tailscale Funnel
-- `webpty up --funnel`에서 자동 `tailscale up` 부트스트랩과 로그인 URL 안내
+- `webpty up --funnel`에서 지원되는 호스트 기준 자동 Tailscale 설치/부트스트랩과 로그인 URL 안내
 - 상단 툴바 없이 검은 터미널 스테이지가 중심인 레이아웃
 - show/hide 가능한 우측 세션 레일
-- 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 별도 설정 워크스페이스 탭
+- 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 고정 설정 워크스페이스 탭, 액션 클러스터 없는 우측 레일
 - `themes[]`, `theme`, 프레임 색상, 셸 크롬을 바로 다루는 Theme Studio
 - `profiles.list[]`, 기본 프로필, 프롬프트, 폰트, 셸 필드를 바로 다루는 Profile Studio
 - 레지스트리 기반 UI 언어 선택을 다루는 `webpty.language` 기반 Language 섹션
@@ -65,6 +65,8 @@
 - Theme/Profile Studio 프롬프트 미리보기에서 템플릿의 공백을 그대로 보존
 - 프롬프트 템플릿의 `{profile}` 토큰이 런타임 셸과 같은 sanitize 규칙으로 미리보기됨
 - 비Windows 셸 실행과 fallback 모두에서 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
+- 기본 Bash/Zsh/Fish 프로필이 같은 host 토큰으로 수렴하지 않고 각 프로필 이름이 드러나는 프롬프트
+- fish 프로필 실행 시 선택된 프로필과 맞는 프롬프트를 강제하는 fish-native 프롬프트 오버라이드
 - 기본 zsh 호스트 셸도 clean interactive 경로로 실행되어 macOS 기본 셸 환경에서 프로필 프롬프트가 바로 덮이지 않음
 - 첫 실행 시 생성되는 기본 설정이 실행 OS를 따라가도록 한 host-scoped profile/settings 생성
 - macOS의 `~/Library/Application Support/webpty/settings.json`을 포함한 host-native 설정 경로
@@ -142,13 +144,13 @@ webpty up --funnel
 ```
 
 `--funnel`은 로컬 `tailscale` CLI를 이용해 내장 웹 UI를 외부에 공개합니다.
-로컬 클라이언트가 오프라인이면 `webpty`가 먼저 `tailscale up`을 자동으로
-시도한 뒤 Funnel을 붙입니다. 헤드리스 환경에서는
+지원되는 호스트에서 CLI가 없으면 `webpty`가 먼저 설치를 시도하고, 그 다음
+`tailscale up`을 자동으로 실행한 뒤 Funnel을 붙입니다. 헤드리스 환경에서는
 `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, `TS_AUTH_KEY`도 사용할 수 있습니다.
 여전히 대화형 로그인이 필요하면 `webpty`가 Tailscale 로그인 URL을 출력하고
 정상적으로 종료합니다. Funnel은 셸 화면 자체를 외부에 공개하므로, 신뢰 가능한
 장비와 네트워크 정책 뒤에서만 사용하는 것이 좋습니다.
-`--funnel` 사용 시 `--host`는 loopback 또는 all-interface 범위로 유지해야 합니다.
+`--funnel` 사용 시 `--host`는 loopback 또는 all-interface 범위로 유지해야 하며 `::1`도 허용됩니다.
 
 ## 설정 파일 위치
 
