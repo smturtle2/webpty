@@ -417,13 +417,14 @@ export function promptPrefixForProfile(profile: TerminalProfile, cwd: string): s
   const profileName = profile.name.trim()
   const commandline = profile.commandline ?? ''
   const resolvedHostLabel = profileHostLabel(profileName, commandline)
+  const sanitizedProfileLabel = sanitizePromptLabel(profileName)
 
   if (promptTemplate && promptTemplate.trim().length > 0) {
     return promptTemplate
       .replaceAll('{cwd}', cwd)
       .replaceAll('{user}', 'user')
       .replaceAll('{host}', resolvedHostLabel ?? 'shell')
-      .replaceAll('{profile}', profile.name)
+      .replaceAll('{profile}', sanitizedProfileLabel)
       .replaceAll('{name}', profile.name)
       .replaceAll('{symbol}', '$')
   }
@@ -436,14 +437,14 @@ export function promptPrefixForProfile(profile: TerminalProfile, cwd: string): s
       return `PS ${cwd}> `
     }
 
-    return `PS(${sanitizePromptLabel(profileName)}) ${cwd}> `
+    return `PS(${sanitizedProfileLabel}) ${cwd}> `
   }
 
   if (resolvedHostLabel) {
     return `user@${resolvedHostLabel}:${cwd}$ `
   }
 
-  return `[${sanitizePromptLabel(profileName)}] ${cwd}$ `
+  return `[${sanitizedProfileLabel}] ${cwd}$ `
 }
 
 function slugify(value: string): string {

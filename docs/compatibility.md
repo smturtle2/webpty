@@ -78,11 +78,13 @@ Action fields currently mapped by the frontend:
 - the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
+- `GET /api/health` now includes `hostPlatform` so the UI can keep Profile Studio command and directory hints aligned with the runtime OS
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
 - theme and profile color inputs keep full token and hex values visible instead of clipping them down to a prefix stub
 - theme and profile color fields also offer shortcut chips for shared token values such as `accent`, `terminalBackground`, `terminalForeground`, `cursorColor`, and `selectionBackground`
 - Profile Studio can edit `webpty.prompt` with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - Profile Studio and Theme Studio previews reuse the same profile-family prompt heuristics as the runtime shell launch path
+- prompt previews now sanitize `{profile}` the same way the runtime shell launch path does
 - prompt previews preserve literal template spacing instead of trimming trailing spaces away
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel and first attempts `tailscale up` automatically when the local client is offline
 - `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` for headless bootstrap flows and otherwise surfaces the interactive login URL when needed
@@ -95,6 +97,7 @@ Action fields currently mapped by the frontend:
 - profile launch uses the configured `commandline` when possible
 - sessions start at the real shell prompt with no synthetic startup banner injected into the transcript
 - on non-Windows hosts, plain shell profile commandlines such as `bash`, `sh`, `zsh`, and `fish` are normalized onto prompt-aware interactive launches when possible
+- default zsh host-shell launches also use a clean interactive path so host startup files do not immediately override the profile-shaped prompt
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - session preview lines strip terminal control sequences before they reach the API or the demo fallback
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session, and the resolved path must be a directory
@@ -106,6 +109,7 @@ Action fields currently mapped by the frontend:
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
 - Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
 - the shipped UI keeps the terminal dominant, the right rail thin and hideable, and the settings workspace as a full tab rather than a floating overlay
+- the terminal viewport now reruns fit passes after mount and font load so narrow/mobile shells settle onto the visible width instead of keeping the initial off-canvas geometry
 
 ## Known Gaps
 

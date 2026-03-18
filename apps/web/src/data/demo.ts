@@ -236,5 +236,6 @@ export const demoHealth: ServerHealth = {
   message: 'Demo mode',
   websocketPath: '/ws/:sessionId',
   mode: 'demo-shell',
+  hostPlatform: 'other',
   features: ['settings-json', 'settings-panel', 'session-tabs'],
 }

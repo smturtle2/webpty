@@ -57,12 +57,16 @@ Implemented:
 - string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
 - runtime-matched profile prompt previews in Profile Studio and theme previews
 - literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
+- prompt-template previews now sanitize `{profile}` with the same rules as the runtime shell path
 - per-profile prompt shaping on non-Windows shell launches and fallbacks so sessions do not collapse to `bash-5.2$`
+- default zsh host launches now use a clean interactive path so macOS-style defaults do not override profile-shaped prompts immediately
 - host-scoped default settings generation so first-run profiles follow the runtime OS instead of shipping Windows-only launch commands everywhere
 - host-native default settings paths, including `~/Library/Application Support/webpty/settings.json` on macOS
+- runtime host metadata now feeds host-aware command and directory hints inside Profile Studio
 - user-scoped settings now win by default, while the repo sample stays opt-in through `--settings`
 - sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
 - real viewport application for `padding`, explicit `lineHeight`, and `window.useMica`
+- repeated terminal fit passes so narrow and mobile viewports stop rendering xterm rows off-canvas
 - stricter launch cwd validation so file paths do not become session working directories
 - safer Funnel cleanup and broader capability detection during startup and shutdown
 - vertical and horizontal split creation inside the active tab

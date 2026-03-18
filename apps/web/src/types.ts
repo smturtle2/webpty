@@ -146,11 +146,14 @@ export interface SessionItem {
   previewLines: string[]
 }
 
+export type RuntimeHostPlatform = 'windows' | 'macos' | 'linux' | 'other'
+
 export interface ServerHealth {
   status: string
   message: string
   websocketPath: string
   mode: string
+  hostPlatform: RuntimeHostPlatform
   features: string[]
 }
 

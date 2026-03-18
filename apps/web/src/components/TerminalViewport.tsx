@@ -47,6 +47,8 @@ export function TerminalViewport({
   const transcriptRef = useRef('')
   const fallbackTranscriptRef = useRef(`${fallbackLines.join('\r\n')}\r\n`)
   const resizeTimerRef = useRef<number | null>(null)
+  const deferredFitTimersRef = useRef<number[]>([])
+  const deferredFitFramesRef = useRef<number[]>([])
 
   const reportConnectionState = useEffectEvent((nextState: 'connecting' | 'live' | 'offline') => {
     onConnectionStateChange(sessionId, nextState)
@@ -98,6 +100,54 @@ export function TerminalViewport({
       resizeTimerRef.current = null
       syncSize()
     }, 48)
+  })
+
+  const clearDeferredFits = useEffectEvent(() => {
+    if (deferredFitFramesRef.current.length > 0) {
+      for (const frameId of deferredFitFramesRef.current) {
+        window.cancelAnimationFrame(frameId)
+      }
+      deferredFitFramesRef.current = []
+    }
+
+    if (deferredFitTimersRef.current.length > 0) {
+      for (const timerId of deferredFitTimersRef.current) {
+        window.clearTimeout(timerId)
+      }
+      deferredFitTimersRef.current = []
+    }
+  })
+
+  const queueFitPasses = useEffectEvent(() => {
+    clearDeferredFits()
+    scheduleSyncSize()
+
+    const firstFrame = window.requestAnimationFrame(() => {
+      scheduleSyncSize()
+
+      const secondFrame = window.requestAnimationFrame(() => {
+        scheduleSyncSize()
+      })
+      deferredFitFramesRef.current.push(secondFrame)
+    })
+    deferredFitFramesRef.current.push(firstFrame)
+
+    for (const delay of [120, 320, 720]) {
+      const timerId = window.setTimeout(() => {
+        scheduleSyncSize()
+      }, delay)
+      deferredFitTimersRef.current.push(timerId)
+    }
+
+    if (typeof document !== 'undefined' && 'fonts' in document) {
+      void document.fonts.ready
+        .then(() => {
+          scheduleSyncSize()
+        })
+        .catch(() => {
+          // ignore font-loading failures and keep the current terminal geometry
+        })
+    }
   })
 
   const applyOutput = useEffectEvent((nextSessionId: string, payload: string) => {
@@ -160,12 +210,22 @@ export function TerminalViewport({
     })
 
     resizeObserver.observe(hostRef.current)
-    scheduleSyncSize()
+    queueFitPasses()
+
+    const handleViewportResize = () => {
+      queueFitPasses()
+    }
+
+    window.addEventListener('resize', handleViewportResize)
+    window.visualViewport?.addEventListener('resize', handleViewportResize)
 
     return () => {
       if (resizeTimerRef.current !== null) {
         window.clearTimeout(resizeTimerRef.current)
       }
+      clearDeferredFits()
+      window.removeEventListener('resize', handleViewportResize)
+      window.visualViewport?.removeEventListener('resize', handleViewportResize)
       resizeObserver.disconnect()
       inputDisposable.dispose()
       socketRef.current?.close()
@@ -188,8 +248,8 @@ export function TerminalViewport({
     term.options.fontSize = fontSize
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
-    scheduleSyncSize()
-  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, scheme])
+    queueFitPasses()
+  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, queueFitPasses, scheme])
 
   useEffect(() => {
     if (!active) {
@@ -286,8 +346,9 @@ export function TerminalViewport({
   useEffect(() => {
     if (active) {
       termRef.current?.focus()
+      queueFitPasses()
     }
-  }, [active])
+  }, [active, queueFitPasses])
 
   return (
     <div

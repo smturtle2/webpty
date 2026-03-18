@@ -60,6 +60,17 @@ enum HostPlatform {
     Other,
 }
 
+impl HostPlatform {
+    fn api_label(self) -> &'static str {
+        match self {
+            HostPlatform::Windows => "windows",
+            HostPlatform::MacOs => "macos",
+            HostPlatform::Linux => "linux",
+            HostPlatform::Other => "other",
+        }
+    }
+}
+
 fn runtime_host_platform() -> HostPlatform {
     match env::consts::OS {
         "windows" => HostPlatform::Windows,
@@ -301,6 +312,7 @@ struct HealthResponse {
     message: String,
     websocket_path: String,
     mode: String,
+    host_platform: String,
     features: Vec<&'static str>,
 }
 
@@ -1297,6 +1309,7 @@ async fn health() -> Json<HealthResponse> {
         message: "Schema-compatible PTY server and embedded shell ready".to_string(),
         websocket_path: "/ws/:sessionId".to_string(),
         mode: "standalone-shell".to_string(),
+        host_platform: runtime_host_platform().api_label().to_string(),
         features: vec![
             "health",
             "embedded-shell",
@@ -2058,16 +2071,26 @@ fn default_shell_builder(profile: Option<&TerminalProfile>) -> CommandBuilder {
         apply_profile_prompt(&mut builder, profile);
 
         if cfg!(unix) {
-            if builder
+            match builder
                 .get_argv()
                 .first()
                 .and_then(|value| value.to_str())
-                .is_some_and(|program| program.contains("bash"))
+                .map(program_name)
+                .as_deref()
             {
-                builder.arg("--noprofile");
-                builder.arg("--norc");
+                Some("bash") | Some("bash.exe") => {
+                    builder.arg("--noprofile");
+                    builder.arg("--norc");
+                    builder.arg("-i");
+                }
+                Some("zsh") | Some("zsh.exe") => {
+                    builder.arg("-f");
+                    builder.arg("-i");
+                }
+                _ => {
+                    builder.arg("-i");
+                }
             }
-            builder.arg("-i");
         }
 
         builder
@@ -3346,6 +3369,43 @@ mod tests {
                 .any(|note| note.contains("interactive bash shell")),
             "plain bash profiles should be normalized onto an interactive shell builder"
         );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn default_shell_builder_normalizes_zsh_hosts_to_clean_interactive_mode() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+        let original_shell = env::var_os("SHELL");
+        let fake_zsh = PathBuf::from("/tmp/webpty-test-shells/zsh");
+
+        fs::create_dir_all(fake_zsh.parent().expect("fake zsh should have a parent"))
+            .expect("test shell directory should exist");
+        fs::write(&fake_zsh, "").expect("fake zsh executable marker should be written");
+
+        unsafe {
+            env::set_var("SHELL", &fake_zsh);
+        }
+
+        let builder = default_shell_builder(None);
+        let argv = builder
+            .get_argv()
+            .iter()
+            .filter_map(|value| value.to_str())
+            .collect::<Vec<_>>();
+
+        match original_shell {
+            Some(value) => unsafe {
+                env::set_var("SHELL", value);
+            },
+            None => unsafe {
+                env::remove_var("SHELL");
+            },
+        }
+
+        assert_eq!(argv.first().copied(), fake_zsh.to_str());
+        assert!(argv.contains(&"-f"));
+        assert!(argv.contains(&"-i"));
+        assert!(!argv.contains(&"--noprofile"));
     }
 
     #[test]

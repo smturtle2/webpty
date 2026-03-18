@@ -53,12 +53,16 @@
 - `{ "command": { "action": "newTab" } }` 같은 문자열/객체형 액션 바인딩 지원
 - Profile Studio와 Theme Studio 미리보기에서 런타임과 같은 프로필별 프롬프트 규칙 반영
 - Theme/Profile Studio 프롬프트 미리보기에서 템플릿의 공백을 그대로 보존
+- 프롬프트 템플릿의 `{profile}` 토큰이 런타임 셸과 같은 sanitize 규칙으로 미리보기됨
 - 비Windows 셸 실행과 fallback 모두에서 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
+- 기본 zsh 호스트 셸도 clean interactive 경로로 실행되어 macOS 기본 셸 환경에서 프로필 프롬프트가 바로 덮이지 않음
 - 첫 실행 시 생성되는 기본 설정이 실행 OS를 따라가도록 한 host-scoped profile/settings 생성
 - macOS의 `~/Library/Application Support/webpty/settings.json`을 포함한 host-native 설정 경로
+- Runtime host metadata를 이용해 Profile Studio의 command/start directory 힌트가 실행 OS에 맞춰짐
 - 사용자 전역 설정이 기본 우선순위를 가지며, 레포 샘플 설정은 `--settings`로만 opt-in
 - bracketed-paste 같은 제어 시퀀스가 요약 라인에 새지 않도록 하는 session preview sanitizing
 - `padding`, 명시적 `lineHeight`, `window.useMica`가 실제 뷰포트와 셸 크롬에 반영됨
+- 반복 fit 패스를 통해 좁은 폭과 모바일에서도 xterm 행이 화면 밖으로 밀려나지 않음
 - 파일 경로가 세션 작업 디렉터리가 되지 않도록 하는 stricter cwd 검증
 - 시작/종료 시 Funnel 정리 경로와 capability 판별 보강
 - 활성 탭 안에서 수직/수평 split 생성

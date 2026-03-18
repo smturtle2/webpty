@@ -34,6 +34,7 @@ import {
 import type {
   ColorReferencePalette,
   ResolvedProfile,
+  RuntimeHostPlatform,
   ServerHealth,
   SessionItem,
   TerminalAction,
@@ -212,6 +213,14 @@ function App() {
   const settingsSectionMeta =
     SETTINGS_SECTIONS.find((section) => section.id === activeSettingsSection) ?? SETTINGS_SECTIONS[0]
   const settingsRailLabel = compactRailLabel(settingsSectionMeta.label)
+  const editorHostPlatform = resolveEditorHostPlatform(serverHealth)
+  const profileCommandlinePlaceholder = resolveCommandlinePlaceholder(
+    profileDraft,
+    editorHostPlatform,
+  )
+  const profileStartingDirectoryPlaceholder = resolveStartingDirectoryPlaceholder(
+    editorHostPlatform,
+  )
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
@@ -324,33 +333,43 @@ function App() {
   }, [activeSessionId, activeTabId, sessions, tabs])
 
   useEffect(() => {
-    if (profileCatalog.length === 0) {
+    if (settings.profiles.list.length === 0) {
       return
     }
 
-    if (!profileCatalog.some((profile) => profile.id === selectedProfileId)) {
-      setSelectedProfileId(profileCatalog[0].id)
+    const hasSelectedProfile = settings.profiles.list.some(
+      (profile) => profileIdentifier(profile) === selectedProfileId,
+    )
+
+    if (!hasSelectedProfile) {
+      setSelectedProfileId(resolveProfile(settings, settings.defaultProfile).id)
       return
     }
 
-    setProfileDraft(resolveProfile(settings, selectedProfileId))
-  }, [profileCatalog, selectedProfileId, settings])
+    const nextDraft = resolveProfile(settings, selectedProfileId)
+    setProfileDraft((current) => (hasSameProfileDraft(current, nextDraft) ? current : nextDraft))
+  }, [selectedProfileId, settings])
 
   useEffect(() => {
-    if (themeCatalog.length === 0) {
-      setThemeDraft({ name: 'Theme' })
+    const themes = settings.themes ?? EMPTY_THEMES
+
+    if (themes.length === 0) {
+      setThemeDraft((current) => (hasSameThemeDraft(current, { name: 'Theme' }) ? current : { name: 'Theme' }))
       return
     }
 
-    if (!themeCatalog.some((theme) => theme.name === selectedThemeName)) {
-      setSelectedThemeName(themeCatalog[0].name)
+    if (!themes.some((theme) => theme.name === selectedThemeName)) {
+      setSelectedThemeName(themes[0].name)
       return
     }
+
+    const nextDraft =
+      themes.find((theme) => theme.name === selectedThemeName) ?? themes[0]
 
     setThemeDraft(
-      themeCatalog.find((theme) => theme.name === selectedThemeName) ?? themeCatalog[0],
+      (current) => (hasSameThemeDraft(current, nextDraft) ? current : nextDraft),
     )
-  }, [selectedThemeName, themeCatalog])
+  }, [selectedThemeName, settings])
 
   function activateSession(sessionId: string) {
     const owner = findTabByPaneId(tabs, sessionId)
@@ -918,6 +937,15 @@ function App() {
             onMouseDown={() => activateSession(session.id)}
           >
             <div className="pane-frame" aria-hidden="true" />
+            <div
+              className={`pane-badge ${
+                visiblePaneSessions.length > 1 ? 'is-visible' : ''
+              } ${isFocusedPane ? 'is-active' : ''}`}
+              aria-hidden="true"
+            >
+              <span>{sessionTitle(session, profile)}</span>
+              <small>{profile.name}</small>
+            </div>
             <TerminalViewport
               active={isFocusedPane}
               canConnect={canConnect}
@@ -1464,11 +1492,15 @@ function App() {
                       <input
                         className="field-input"
                         value={profileDraft.commandline ?? ''}
-                        placeholder="pwsh.exe"
+                        placeholder={profileCommandlinePlaceholder}
                         onChange={(event) =>
                           patchProfileDraft({ commandline: event.target.value })
                         }
                       />
+                      <span className="field-help">
+                        Leave this empty to follow the runtime default shell for{' '}
+                        {runtimeHostPlatformLabel(editorHostPlatform)}.
+                      </span>
                     </label>
 
                     <label className="field-row field-row-span">
@@ -1476,11 +1508,14 @@ function App() {
                       <input
                         className="field-input"
                         value={profileDraft.startingDirectory ?? ''}
-                        placeholder="%USERPROFILE%"
+                        placeholder={profileStartingDirectoryPlaceholder}
                         onChange={(event) =>
                           patchProfileDraft({ startingDirectory: event.target.value })
                         }
                       />
+                      <span className="field-help">
+                        Leave this empty to start from the runtime home directory.
+                      </span>
                     </label>
 
                     <label className="field-row field-row-span">
@@ -1518,7 +1553,7 @@ function App() {
                       <input
                         className="field-input"
                         value={profileDraft.tabTitle ?? ''}
-                        placeholder="Admin"
+                        placeholder="Optional label"
                         onChange={(event) => patchProfileDraft({ tabTitle: event.target.value })}
                       />
                     </label>
@@ -2084,6 +2119,103 @@ function compactRailLabel(label: string): string {
   return normalized.slice(0, 6).toUpperCase()
 }
 
+function hasSameProfileDraft(current: TerminalProfile, next: TerminalProfile) {
+  return JSON.stringify(current) === JSON.stringify(next)
+}
+
+function hasSameThemeDraft(current: TerminalTheme, next: TerminalTheme) {
+  return JSON.stringify(current) === JSON.stringify(next)
+}
+
+function normalizeHostPlatform(
+  value: unknown,
+  fallback: RuntimeHostPlatform,
+): RuntimeHostPlatform {
+  if (
+    value === 'windows' ||
+    value === 'macos' ||
+    value === 'linux' ||
+    value === 'other'
+  ) {
+    return value
+  }
+
+  return fallback
+}
+
+function resolveEditorHostPlatform(serverHealth: ServerHealth): RuntimeHostPlatform {
+  return serverHealth.hostPlatform === 'other'
+    ? inferBrowserHostPlatform()
+    : serverHealth.hostPlatform
+}
+
+function inferBrowserHostPlatform(): RuntimeHostPlatform {
+  if (typeof navigator === 'undefined') {
+    return 'other'
+  }
+
+  const signature = `${navigator.platform} ${navigator.userAgent}`.toLowerCase()
+
+  if (signature.includes('win')) {
+    return 'windows'
+  }
+
+  if (signature.includes('mac')) {
+    return 'macos'
+  }
+
+  if (signature.includes('linux')) {
+    return 'linux'
+  }
+
+  return 'other'
+}
+
+function runtimeHostPlatformLabel(platform: RuntimeHostPlatform): string {
+  switch (platform) {
+    case 'windows':
+      return 'Windows'
+    case 'macos':
+      return 'macOS'
+    case 'linux':
+      return 'Linux'
+    default:
+      return 'this host'
+  }
+}
+
+function resolveCommandlinePlaceholder(
+  profile: TerminalProfile,
+  hostPlatform: RuntimeHostPlatform,
+) {
+  if (profile.commandline?.trim()) {
+    return profile.commandline
+  }
+
+  const normalizedName = profile.name.trim().toLowerCase()
+  if (normalizedName === 'host shell' || normalizedName === 'shell') {
+    return 'default host shell'
+  }
+
+  if (hostPlatform === 'windows') {
+    return 'pwsh.exe'
+  }
+
+  if (hostPlatform === 'macos') {
+    return '/bin/zsh'
+  }
+
+  if (hostPlatform === 'linux') {
+    return '/bin/bash'
+  }
+
+  return 'default host shell'
+}
+
+function resolveStartingDirectoryPlaceholder(hostPlatform: RuntimeHostPlatform) {
+  return hostPlatform === 'windows' ? '%USERPROFILE%' : '~'
+}
+
 function normalizeHealth(payload: unknown): ServerHealth {
   if (!isRecord(payload)) {
     return demoHealth
@@ -2097,6 +2229,10 @@ function normalizeHealth(payload: unknown): ServerHealth {
       demoHealth.websocketPath,
     ),
     mode: asString(payload.mode, demoHealth.mode),
+    hostPlatform: normalizeHostPlatform(
+      payload.hostPlatform ?? payload.host_platform,
+      demoHealth.hostPlatform,
+    ),
     features: asStringArray(payload.features, demoHealth.features),
   }
 }

@@ -16,6 +16,7 @@
 ### `GET /api/health`
 
 Returns runtime health and feature flags for the frontend shell.
+`hostPlatform` lets the UI align profile-editor hints with the actual runtime OS.
 
 Example:
 
@@ -25,6 +26,7 @@ Example:
   "message": "Schema-compatible PTY server and embedded shell ready",
   "websocketPath": "/ws/:sessionId",
   "mode": "standalone-shell",
+  "hostPlatform": "linux",
   "features": [
     "health",
     "embedded-shell",
@@ -93,6 +95,7 @@ Notes:
 - if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`
 - the runtime does not inject a synthetic startup banner before the shell prompt
 - on non-Windows hosts, plain shell profile commandlines are normalized toward prompt-aware interactive launches, and platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
+- default zsh host-shell launches also use a clean interactive path so host startup files do not immediately override the profile-shaped prompt
 - `cwd` token expansion accepts only directories; existing file paths fall back to the current working directory
 
 Returns:
@@ -146,4 +149,5 @@ Connection behavior:
 - `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` during automatic bootstrap and otherwise prints the interactive auth URL when login is still required
 - `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit, including timeout / SIGTERM-style shutdown paths
 - the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
+- the frontend uses `hostPlatform` from `/api/health` to keep Profile Studio command and directory placeholders host-aware
 - advanced pane graphs, search, and command palette remain future milestones
