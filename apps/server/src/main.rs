@@ -38,6 +38,7 @@ const DEFAULT_PORT: u16 = 3001;
 const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
+const WEB_UI_FINGERPRINT: &str = env!("WEBPTY_UI_FINGERPRINT");
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
 #[derive(Clone)]
@@ -439,6 +440,28 @@ struct TerminalAction {
     extra: JsonMap<String, JsonValue>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum StringOrNumber {
+    Number(f64),
+    String(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct TerminalFontSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    face: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    weight: Option<StringOrNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cell_height: Option<f64>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminalProfiles {
@@ -453,9 +476,15 @@ struct TerminalProfiles {
 #[serde(rename_all = "camelCase")]
 struct TerminalProfileDefaults {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    font: Option<TerminalFontSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     font_face: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    font_weight: Option<StringOrNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cell_height: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     line_height: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -464,6 +493,16 @@ struct TerminalProfileDefaults {
     opacity: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     use_acrylic: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    foreground: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cursor_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selection_background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    padding: Option<StringOrNumber>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -491,9 +530,15 @@ struct TerminalProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     color_scheme: Option<SchemeSelection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    font: Option<TerminalFontSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     font_face: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    font_weight: Option<StringOrNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cell_height: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     line_height: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -502,6 +547,16 @@ struct TerminalProfile {
     opacity: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     use_acrylic: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    foreground: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cursor_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    selection_background: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    padding: Option<StringOrNumber>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -1014,6 +1069,7 @@ async fn static_handler(uri: Uri) -> Response {
 }
 
 fn find_embedded_asset(path: &str) -> Option<Response> {
+    let _ = WEB_UI_FINGERPRINT;
     let normalized = match path {
         "" => "index.html",
         value => value,
@@ -1839,7 +1895,10 @@ fn sanitize_prompt_label(value: &str) -> String {
     let sanitized = value
         .chars()
         .filter(|character| {
-            character.is_ascii_alphanumeric() || *character == '-' || *character == '_'
+            character.is_ascii_alphanumeric()
+                || *character == '-'
+                || *character == '_'
+                || *character == '.'
         })
         .collect::<String>();
 
@@ -1855,7 +1914,11 @@ fn profile_host_label(profile_name: &str, commandline: &str) -> Option<String> {
     let normalized_name = sanitize_prompt_label(&profile_name.to_ascii_lowercase());
     let normalized_command = commandline.to_ascii_lowercase();
 
-    if normalized_command.contains("wsl") || normalized_name.contains("ubuntu") {
+    if let Some(distribution) = wsl_distribution_label(commandline) {
+        return Some(distribution);
+    }
+
+    if normalized_name.contains("ubuntu") {
         return Some(if normalized_name.is_empty() {
             "ubuntu".to_string()
         } else {
@@ -1863,11 +1926,91 @@ fn profile_host_label(profile_name: &str, commandline: &str) -> Option<String> {
         });
     }
 
-    if normalized_command.contains("bash") || normalized_name.contains("bash") {
-        return Some("shell".to_string());
+    if looks_posix_shell_prompt(&normalized_command) || is_generic_shell_label(&normalized_name) {
+        return Some(
+            if normalized_name.is_empty() || is_generic_shell_label(&normalized_name) {
+                "shell".to_string()
+            } else {
+                normalized_name
+            },
+        );
     }
 
     None
+}
+
+#[cfg(not(windows))]
+fn wsl_distribution_label(commandline: &str) -> Option<String> {
+    let args = parse_commandline_args(commandline)?;
+    let program = program_name(args.first()?);
+
+    if program != "wsl" && program != "wsl.exe" {
+        return None;
+    }
+
+    let mut index = 1;
+    while index < args.len() {
+        let argument = &args[index];
+        let lowered = argument.to_ascii_lowercase();
+
+        if matches!(lowered.as_str(), "-d" | "--distribution") {
+            let distribution = args.get(index + 1)?;
+            let label = sanitize_prompt_label(&distribution.to_ascii_lowercase());
+            return (!label.is_empty()).then_some(label);
+        }
+
+        if let Some((flag, value)) = lowered.split_once('=')
+            && matches!(flag, "-d" | "--distribution")
+        {
+            let label = sanitize_prompt_label(value);
+            return (!label.is_empty()).then_some(label);
+        }
+
+        index += 1;
+    }
+
+    None
+}
+
+#[cfg(not(windows))]
+fn looks_posix_shell_prompt(commandline: &str) -> bool {
+    if commandline.contains("bash")
+        || commandline.contains("zsh")
+        || commandline.contains("fish")
+        || commandline.contains("/bin/sh")
+    {
+        return true;
+    }
+
+    command_program_name(commandline).is_some_and(|program| {
+        matches!(
+            program.as_str(),
+            "bash" | "bash.exe" | "sh" | "zsh" | "zsh.exe" | "fish" | "fish.exe"
+        )
+    })
+}
+
+#[cfg(not(windows))]
+fn command_program_name(commandline: &str) -> Option<String> {
+    let args = parse_commandline_args(commandline)?;
+    Some(program_name(args.first()?))
+}
+
+#[cfg(not(windows))]
+fn program_name(program: &str) -> String {
+    program
+        .rsplit(|character| character == '/' || character == '\\')
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase()
+}
+
+#[cfg(not(windows))]
+fn is_generic_shell_label(label: &str) -> bool {
+    matches!(
+        label,
+        "" | "shell" | "bash" | "sh" | "zsh" | "fish" | "terminal"
+    )
 }
 
 #[cfg(not(windows))]
@@ -2091,7 +2234,7 @@ fn default_settings() -> TerminalSettings {
                 tab: Some(TerminalTabTheme {
                     background: Some("#ffffff".to_string()),
                     unfocused_background: Some("#f5f5f5".to_string()),
-                    show_close_button: Some("hover".to_string()),
+                    show_close_button: Some("activeOnly".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab_row: Some(TerminalTabRowTheme {
@@ -2176,12 +2319,26 @@ fn default_settings() -> TerminalSettings {
         ],
         profiles: TerminalProfiles {
             defaults: Some(TerminalProfileDefaults {
-                font_face: Some("Cascadia Mono".to_string()),
-                font_size: Some(13.0),
+                font: Some(TerminalFontSettings {
+                    face: Some("Cascadia Mono".to_string()),
+                    size: Some(13.0),
+                    weight: None,
+                    cell_height: Some(1.22),
+                    extra: JsonMap::new(),
+                }),
+                font_face: None,
+                font_size: None,
+                font_weight: None,
+                cell_height: None,
                 line_height: Some(1.22),
                 cursor_shape: Some("bar".to_string()),
-                opacity: Some(92.0),
+                opacity: Some(100.0),
                 use_acrylic: None,
+                foreground: None,
+                background: None,
+                cursor_color: None,
+                selection_background: None,
+                padding: None,
                 extra: JsonMap::new(),
             }),
             list: vec![
@@ -2196,12 +2353,20 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#3b78ff".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    font: None,
                     font_face: None,
                     font_size: None,
+                    font_weight: None,
+                    cell_height: None,
                     line_height: None,
                     cursor_shape: None,
                     opacity: None,
                     use_acrylic: None,
+                    foreground: None,
+                    background: None,
+                    cursor_color: None,
+                    selection_background: None,
+                    padding: None,
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2215,12 +2380,20 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#f0a355".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("One Half Dark".to_string())),
+                    font: None,
                     font_face: None,
                     font_size: None,
+                    font_weight: None,
+                    cell_height: None,
                     line_height: None,
                     cursor_shape: None,
                     opacity: None,
                     use_acrylic: None,
+                    foreground: None,
+                    background: None,
+                    cursor_color: None,
+                    selection_background: None,
+                    padding: None,
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2237,12 +2410,20 @@ fn default_settings() -> TerminalSettings {
                     tab_color: Some("#2fbf9b".to_string()),
                     tab_title: None,
                     color_scheme: Some(SchemeSelection::Named("Campbell".to_string())),
+                    font: None,
                     font_face: None,
                     font_size: None,
+                    font_weight: None,
+                    cell_height: None,
                     line_height: None,
                     cursor_shape: None,
                     opacity: None,
                     use_acrylic: None,
+                    foreground: None,
+                    background: None,
+                    cursor_color: None,
+                    selection_background: None,
+                    padding: None,
                     extra: JsonMap::new(),
                 },
             ],
@@ -2349,12 +2530,20 @@ mod tests {
             tab_color: None,
             tab_title: Some("Admin".to_string()),
             color_scheme: None,
+            font: None,
             font_face: None,
             font_size: None,
+            font_weight: None,
+            cell_height: None,
             line_height: None,
             cursor_shape: None,
             opacity: None,
             use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
             extra: JsonMap::new(),
         };
 
@@ -2375,12 +2564,20 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font: None,
             font_face: None,
             font_size: None,
+            font_weight: None,
+            cell_height: None,
             line_height: None,
             cursor_shape: None,
             opacity: None,
             use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
             extra: JsonMap::new(),
         };
         let ubuntu = TerminalProfile {
@@ -2394,12 +2591,20 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font: None,
             font_face: None,
             font_size: None,
+            font_weight: None,
+            cell_height: None,
             line_height: None,
             cursor_shape: None,
             opacity: None,
             use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
             extra: JsonMap::new(),
         };
         let custom = TerminalProfile {
@@ -2413,19 +2618,61 @@ mod tests {
             tab_color: None,
             tab_title: None,
             color_scheme: None,
+            font: None,
             font_face: None,
             font_size: None,
+            font_weight: None,
+            cell_height: None,
             line_height: None,
             cursor_shape: None,
             opacity: None,
             use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
             extra: JsonMap::new(),
         };
 
         assert_eq!(profile_prompt(Some(&powershell)), "PS \\w> ");
         assert_eq!(profile_prompt(Some(&ubuntu)), "\\u@ubuntu:\\w\\$ ");
-        assert_eq!(profile_prompt(Some(&custom)), "\\u@shell:\\w\\$ ");
+        assert_eq!(profile_prompt(Some(&custom)), "\\u@azureops:\\w\\$ ");
         assert_eq!(profile_prompt(None), "\\w\\$ ");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn profile_prompt_uses_wsl_distribution_when_available() {
+        let profile = TerminalProfile {
+            guid: None,
+            name: "Linux".to_string(),
+            icon: None,
+            commandline: Some("wsl.exe --distribution Debian-12".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            font: None,
+            font_face: None,
+            font_size: None,
+            font_weight: None,
+            cell_height: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
+            extra: JsonMap::new(),
+        };
+
+        assert_eq!(profile_prompt(Some(&profile)), "\\u@debian-12:\\w\\$ ");
     }
 
     #[cfg(not(windows))]
@@ -2552,12 +2799,80 @@ mod tests {
     }
 
     #[test]
+    fn persist_settings_preserves_nested_font_and_unknown_keys() {
+        let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
+        let fixture = r#"
+        {
+          "$schema": "https://aka.ms/terminal-profiles-schema",
+          "defaultProfile": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+          "experimentalFeature": true,
+          "profiles": {
+            "defaults": {
+              "font": {
+                "face": "Cascadia Mono",
+                "size": 13,
+                "weight": "semi-light",
+                "cellHeight": 1.22
+              }
+            },
+            "list": [
+              {
+                "guid": "{4f1c71d0-7f40-4f9f-91b0-6e1f0d59ad11}",
+                "name": "PowerShell",
+                "commandline": "pwsh.exe",
+                "font": {
+                  "face": "Cascadia Mono",
+                  "size": 14,
+                  "weight": 600
+                },
+                "customProfileFlag": "keep-me"
+              }
+            ]
+          }
+        }
+        "#;
+
+        fs::write(&path, fixture).expect("fixture should be written");
+
+        let settings = load_settings(&path).expect("settings should load");
+        persist_settings(&path, &settings).expect("settings should persist");
+
+        let written = fs::read_to_string(&path).expect("persisted file should exist");
+        let payload: JsonValue =
+            serde_json::from_str(&written).expect("persisted JSON should parse");
+
+        assert_eq!(
+            payload.pointer("/profiles/defaults/font/face"),
+            Some(&JsonValue::String("Cascadia Mono".to_string()))
+        );
+        assert_eq!(
+            payload
+                .pointer("/profiles/list/0/font/weight")
+                .and_then(JsonValue::as_f64),
+            Some(600.0)
+        );
+        assert_eq!(
+            payload.pointer("/profiles/list/0/customProfileFlag"),
+            Some(&JsonValue::String("keep-me".to_string()))
+        );
+        assert_eq!(
+            payload.get("experimentalFeature"),
+            Some(&JsonValue::Bool(true))
+        );
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn load_settings_does_not_mutate_invalid_existing_file() {
         let path = env::temp_dir().join(format!("webpty-settings-{}.json", Uuid::new_v4()));
         let fixture = "{ invalid json";
 
         fs::write(&path, fixture).expect("fixture should be written");
-        assert!(load_settings(&path).is_err(), "invalid settings should fail");
+        assert!(
+            load_settings(&path).is_err(),
+            "invalid settings should fail"
+        );
         assert_eq!(
             fs::read_to_string(&path).expect("fixture should remain readable"),
             fixture

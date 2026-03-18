@@ -19,9 +19,10 @@ Included:
 - narrow right-side session rail
 - rail show/hide toggle
 - split creation from the rail
-- a right-anchored settings drawer
+- a right-side settings workspace tab
 - dedicated Theme Studio for shell chrome editing
 - dedicated Profile Studio for launch and font editing
+- create / duplicate / delete flows for profile and theme entries
 - keyboard session switching and creation
 - live PTY transport behind the UI
 - one-command Rust startup via `webpty up`
@@ -48,7 +49,7 @@ Excluded for now:
 - `Ctrl+Shift+Tab` cycles backwards
 - `Ctrl+T` creates a tab
 - `Ctrl+W` closes the active tab when more than one exists
-- `Ctrl+,` opens the settings drawer
+- `Ctrl+,` opens the settings tab
 
 These bindings are sourced from the configured `actions[]` subset when present.
 

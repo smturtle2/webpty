@@ -10,7 +10,7 @@
 
 `webpty`는 셸이 화면의 주인공이 되도록 설계되어 있습니다.
 터미널은 검은색으로 화면 대부분을 차지하고, 우측에는 얇은 세션 레일이
-붙어 있으며, 설정 패널은 그 레일에서 바로 열립니다. 실행 경로는 Rust 단일
+붙어 있으며, 설정 워크스페이스는 별도 탭으로 그 레일에서 바로 열립니다. 실행 경로는 Rust 단일
 바이너리이고 `webpty up` 한 번으로 UI와 PTY 런타임을 함께 올립니다.
 
 프로필, 테마, 색상표, 액션, 기본값은 공유 가능한 데스크톱 터미널용
@@ -36,9 +36,10 @@
 - `webpty up --funnel` 외부 접속용 Tailscale Funnel
 - 상단 툴바 없이 검은 터미널 스테이지가 중심인 레이아웃
 - show/hide 가능한 우측 세션 레일
-- 흰색 플랫 탭과 우측 고정 설정 드로어
+- 흰색 플랫 탭과 별도 설정 워크스페이스 탭
 - `themes[]`와 `theme`를 바로 다루는 Theme Studio
 - `profiles.list[]`, 기본 프로필, 폰트/셸 필드를 바로 다루는 Profile Studio
+- profile/theme 항목 생성·복제·삭제용 인앱 UI
 - schema 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
@@ -46,13 +47,13 @@
 - 비Windows fallback에서도 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
 - 활성 탭 안에서 수직/수평 split 생성
 - PTY 입력, 리사이즈, 출력 스트림 처리
-- 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 패널에 렌더링
+- 브라우저에서 접근 가능한 프로필 아이콘 소스를 레일과 설정 워크스페이스에 렌더링
+- 프런트 빌드 후 Rust 임베디드 UI가 새 자산을 다시 포함하도록 하는 재빌드 추적
 
 알려진 공백:
 
 - 더 깊은 pane graph, 드래그 재배치, 영속 pane 레이아웃
 - 탭 드래그 정렬
-- profile/theme 항목 생성·복제·삭제 흐름은 아직 `settings.json` 편집 의존
 - 현재 탭/설정 subset을 넘는 더 넓은 action object 지원
 - 모든 프로필 아이콘 URI 형식에 대한 완전한 호스트 자산 파리티
 - 앱 재시작 후 세션 복원
@@ -97,6 +98,8 @@ webpty up --funnel
 `--funnel`은 로컬 `tailscale` CLI를 이용해 내장 웹 UI를 외부에 공개합니다.
 먼저 `tailscale up`을 실행하고 현재 노드에 Funnel 권한이 있는지 확인해야
 합니다.
+Funnel은 셸 화면 자체를 외부에 공개하므로, 신뢰 가능한 장비와 네트워크 정책
+뒤에서만 사용하는 것이 좋습니다.
 
 ## 설정 파일 위치
 
@@ -137,7 +140,8 @@ cargo run -- up
 
 Vite 개발 서버는 `/api`와 `/ws` 요청을 `http://127.0.0.1:3001`로 프록시하고,
 프로덕션 빌드는 `apps/server/ui`로 출력되어 Rust 바이너리에서 직접
-서빙됩니다.
+서빙됩니다. Rust 빌드는 `apps/server/ui` 변경을 감시하므로, 백엔드
+재빌드 시 최신 프런트 자산이 자동으로 다시 임베드됩니다.
 
 ## 검증
 
@@ -153,7 +157,7 @@ cargo check
 React shell
   ├─ terminal stage
   ├─ right-side session rail
-  └─ right-anchored settings drawer
+  └─ settings workspace tab
        ↓
 Rust runtime
   ├─ embedded asset serving

@@ -70,8 +70,9 @@ Action fields currently mapped by the frontend:
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
 - the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
-- the in-app Theme Studio updates the selected `themes[]` entry and can also update `theme`
-- the in-app Profile Studio updates the selected `profiles.list[]` entry and can also update `defaultProfile`
+- the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
+- the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
+- the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
@@ -82,7 +83,9 @@ Action fields currently mapped by the frontend:
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session
 - unsupported keys are preserved when the supported subset is loaded and saved again, including edits initiated from the in-app settings UI
+- nested `font` objects on profiles and profile defaults round-trip through the Rust runtime
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface
+- Rust rebuilds now track embedded UI asset changes so the served bundle stays current after frontend builds
 
 ## Known Gaps
 

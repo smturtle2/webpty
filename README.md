@@ -15,7 +15,7 @@
 
 `webpty` keeps the shell in control of the screen.
 The terminal stays black and dominant, the session rail stays thin and bright
-on the right edge, the settings drawer opens from the rail, and the shipped
+on the right edge, the settings workspace opens as its own rail tab, and the shipped
 binary runs the UI and PTY runtime together with `webpty up`.
 
 Profiles, themes, schemes, actions, and defaults use a shared desktop-terminal
@@ -40,9 +40,10 @@ Implemented:
 - `webpty up --funnel` external access through Tailscale Funnel
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
-- white flat tab surfaces and a right-anchored settings drawer
+- white flat tab surfaces and a dedicated settings workspace tab
 - dedicated Theme Studio for `themes[]`, `theme`, and shell surface editing
 - dedicated Profile Studio for `profiles.list[]`, default profile, and font/shell field editing
+- in-app create / duplicate / delete flows for profile and theme entries
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel
@@ -50,13 +51,13 @@ Implemented:
 - per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
 - vertical and horizontal split creation inside the active tab
 - WebSocket input/output streaming and PTY resize handling
-- browser-safe profile icon sources rendered in the rail and settings panel
+- browser-safe profile icon sources rendered in the rail and settings workspace
+- embedded UI rebuild tracking so Rust picks up fresh bundled assets after frontend builds
 
 Known gaps:
 
 - deeper pane graphs, drag rearranging, and persisted pane layouts
 - drag/drop tab ordering
-- create/duplicate/delete flows for profile and theme entries still rely on `settings.json`
 - broader action object coverage beyond the current tab/settings subset
 - host-local icon URI parity for every profile asset format
 - session restoration across app restarts
@@ -100,6 +101,8 @@ webpty up --funnel
 
 `--funnel` uses the local `tailscale` CLI to publish the embedded web UI. Run
 `tailscale up` first and make sure the node has Funnel capability enabled.
+Treat Funnel as public exposure of the shell surface and only use it behind a
+trusted machine and network policy.
 
 ## Settings Path
 
@@ -140,7 +143,8 @@ cargo run -- up
 
 The Vite dev server proxies `/api` and `/ws` to `http://127.0.0.1:3001`, while
 production builds are emitted into `apps/server/ui` and served by the Rust
-binary.
+binary. The Rust build watches `apps/server/ui`, so a fresh backend build
+re-embeds updated frontend assets automatically.
 
 ## Validate
 
@@ -156,7 +160,7 @@ cargo check
 React shell
   ├─ terminal stage
   ├─ right-side session rail
-  └─ right-anchored settings drawer
+  └─ settings workspace tab
        ↓
 Rust runtime
   ├─ embedded asset serving

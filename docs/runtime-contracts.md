@@ -132,4 +132,5 @@ Connection behavior:
 - profile and theme definitions remain the main source of truth
 - `webpty up --funnel` depends on the local `tailscale` client and an authenticated node with Funnel capability
 - `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit
+- the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
 - advanced pane graphs, search, and command palette remain future milestones

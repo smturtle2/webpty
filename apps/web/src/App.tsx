@@ -26,6 +26,7 @@ import {
   resolveWindowAppearance,
 } from './lib/terminalProfiles'
 import type {
+  ResolvedProfile,
   ServerHealth,
   SessionItem,
   TerminalAction,
@@ -39,6 +40,7 @@ import type {
 type ConnectionState = 'connecting' | 'live' | 'offline'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 type PaneLayout = 'single' | 'vertical' | 'horizontal'
+type WorkspaceMode = 'terminal' | 'settings'
 type SupportedActionCommand = 'newTab' | 'closeTab' | 'nextTab' | 'prevTab' | 'openSettings'
 type ActionBindings = Record<SupportedActionCommand, string[]>
 type SettingsSection = 'appearance' | 'profiles' | 'json' | 'shortcuts'
@@ -58,6 +60,7 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
 }
 
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
+const SETTINGS_WORKSPACE_ID = 'workspace-settings'
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
   { id: 'appearance', label: 'Theme Studio', meta: 'Surface, tabs, and shell chrome' },
   { id: 'profiles', label: 'Profile Studio', meta: 'Shell launch and font behavior' },
@@ -78,6 +81,7 @@ function App() {
   const [remoteReady, setRemoteReady] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('offline')
   const [systemAppearance, setSystemAppearance] = useState<'dark' | 'light'>(resolveAppearance())
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceMode>('terminal')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [activeSettingsSection, setActiveSettingsSection] =
     useState<SettingsSection>('appearance')
@@ -133,7 +137,10 @@ function App() {
   const uiTheme = resolveUiTheme(settings, activeProfile, uiAppearance)
   const closeButtonMode = activeTheme?.tab?.showCloseButton ?? 'hover'
   const visiblePaneSessions = paneSessions.length > 0 ? paneSessions : [activeSession]
-  const activeTabLabel = tabLabelForTab(currentTab, sessions, settings)
+  const activeTabLabel =
+    activeWorkspace === 'settings' ? 'Settings' : tabLabelForTab(currentTab, sessions, settings)
+  const activeWorkspaceId =
+    activeWorkspace === 'settings' ? SETTINGS_WORKSPACE_ID : currentTab.id
   const profileCatalog = settings.profiles.list.map((profile) =>
     resolveProfile(settings, profileIdentifier(profile)),
   )
@@ -149,7 +156,7 @@ function App() {
   const selectedProfileSchemeName =
     schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? activeScheme.name
   const actionBindings = resolveActionBindings(settings.actions)
-  const canSplitActiveTab = currentTab.paneIds.length === 1
+  const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
     { command: 'new tab', keys: actionLabel(actionBindings.newTab) },
     { command: 'close tab', keys: actionLabel(actionBindings.closeTab) },
@@ -236,17 +243,15 @@ function App() {
         sessionsResult.status === 'fulfilled' &&
         nextSessions.length > 0
 
-      startTransition(() => {
-        setServerHealth(nextHealth)
-        setSettings(nextSettings)
-        setSettingsDocument(nextSettingsDocument)
-        setSettingsDraft(formatSettingsJson(nextSettingsDocument))
-        setSessions(nextVisibleSessions)
-        setTabs(nextTabs)
-        setActiveSessionId(nextTabs[0].paneIds[0])
-        setActiveTabId(nextTabs[0].id)
-        setRemoteReady(ready)
-      })
+      setServerHealth(nextHealth)
+      setSettings(nextSettings)
+      setSettingsDocument(nextSettingsDocument)
+      setSettingsDraft(formatSettingsJson(nextSettingsDocument))
+      setSessions(nextVisibleSessions)
+      setTabs(nextTabs)
+      setActiveSessionId(nextTabs[0].paneIds[0])
+      setActiveTabId(nextTabs[0].id)
+      setRemoteReady(ready)
 
       setIsBooting(false)
     }
@@ -320,6 +325,7 @@ function App() {
     const owner = findTabByPaneId(tabs, sessionId)
 
     startTransition(() => {
+      setActiveWorkspace('terminal')
       if (owner) {
         setActiveTabId(owner.id)
       }
@@ -347,17 +353,53 @@ function App() {
     })
   }
 
-  function cycleSession(direction: 1 | -1) {
-    if (tabs.length <= 1) {
+  function closeSettingsWorkspace() {
+    setActiveWorkspace('terminal')
+    setIsSettingsOpen(false)
+  }
+
+  function openSettingsWorkspace(section: SettingsSection) {
+    setIsRailCollapsed(false)
+    setActiveSettingsSection(section)
+    setIsSettingsOpen(true)
+    setActiveWorkspace('settings')
+  }
+
+  function cycleWorkspace(direction: 1 | -1) {
+    const workspaceOrder = [
+      ...tabs.map((tab) => tab.id),
+      ...(isSettingsOpen ? [SETTINGS_WORKSPACE_ID] : []),
+    ]
+
+    if (workspaceOrder.length <= 1) {
       return
     }
 
-    const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId)
-    const nextIndex = (currentIndex + direction + tabs.length) % tabs.length
-    const nextTab = tabs[nextIndex]
+    const currentIndex = workspaceOrder.indexOf(activeWorkspaceId)
+    const nextIndex =
+      (Math.max(currentIndex, 0) + direction + workspaceOrder.length) % workspaceOrder.length
+    const nextWorkspaceId = workspaceOrder[nextIndex]
 
-    setActiveTabId(nextTab.id)
+    if (nextWorkspaceId === SETTINGS_WORKSPACE_ID) {
+      setActiveWorkspace('settings')
+      return
+    }
+
+    const nextTab = tabs.find((tab) => tab.id === nextWorkspaceId)
+    if (!nextTab) {
+      return
+    }
+
     activateSession(nextTab.paneIds[0])
+  }
+
+  function closeCurrentWorkspace() {
+    if (activeWorkspace === 'settings' && isSettingsOpen) {
+      closeSettingsWorkspace()
+      return
+    }
+
+    void closeTab(activeTabId)
   }
 
   async function createSession(profileId = activeProfile.id, mode: PaneLayout = 'single') {
@@ -381,6 +423,7 @@ function App() {
         if (created) {
           const nextTabs = appendSessionToTabs(tabs, activeTabId, created.id, mode)
           startTransition(() => {
+            setActiveWorkspace('terminal')
             setSessions((currentSessions) => [...promoteSessions(currentSessions), created])
             setTabs(nextTabs)
             setActiveTabId(findTabByPaneId(nextTabs, created.id)?.id ?? tabIdForSession(created.id))
@@ -397,6 +440,7 @@ function App() {
     const nextTabs = appendSessionToTabs(tabs, activeTabId, fallback.id, mode)
 
     startTransition(() => {
+      setActiveWorkspace('terminal')
       setSessions((currentSessions) => [...promoteSessions(currentSessions), fallback])
       setTabs(nextTabs)
       setActiveTabId(findTabByPaneId(nextTabs, fallback.id)?.id ?? tabIdForSession(fallback.id))
@@ -498,9 +542,9 @@ function App() {
   }
 
   function handleShortcut(event: KeyboardEvent) {
-    if (event.key === 'Escape' && isSettingsOpen) {
+    if (event.key === 'Escape' && activeWorkspace === 'settings') {
       event.preventDefault()
-      setIsSettingsOpen(false)
+      closeSettingsWorkspace()
       return true
     }
 
@@ -510,13 +554,13 @@ function App() {
 
     if (matchesAction(event, actionBindings.prevTab)) {
       event.preventDefault()
-      cycleSession(-1)
+      cycleWorkspace(-1)
       return true
     }
 
     if (matchesAction(event, actionBindings.nextTab)) {
       event.preventDefault()
-      cycleSession(1)
+      cycleWorkspace(1)
       return true
     }
 
@@ -528,15 +572,17 @@ function App() {
 
     if (matchesAction(event, actionBindings.closeTab)) {
       event.preventDefault()
-      void closeTab(activeTabId)
+      closeCurrentWorkspace()
       return true
     }
 
     if (matchesAction(event, actionBindings.openSettings)) {
       event.preventDefault()
-      setIsRailCollapsed(false)
-      setActiveSettingsSection('appearance')
-      setIsSettingsOpen((current) => !current)
+      if (activeWorkspace === 'settings') {
+        closeSettingsWorkspace()
+      } else {
+        openSettingsWorkspace('appearance')
+      }
       return true
     }
 
@@ -611,6 +657,46 @@ function App() {
     setProfileDraft(selectedProfile)
   }
 
+  async function handleProfileCreate() {
+    const nextProfile = createProfileDraft(profileCatalog)
+    const nextDocument = updateProfileDocument(
+      settingsDocument,
+      profileIdentifier(nextProfile),
+      nextProfile,
+    )
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedProfileId(profileIdentifier(nextProfile))
+  }
+
+  async function handleProfileDuplicate() {
+    const nextProfile = duplicateProfileDraft(selectedProfile, profileCatalog)
+    const nextDocument = updateProfileDocument(
+      settingsDocument,
+      profileIdentifier(nextProfile),
+      nextProfile,
+    )
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedProfileId(profileIdentifier(nextProfile))
+  }
+
+  async function handleProfileDelete() {
+    if (profileCatalog.length <= 1) {
+      setSettingsError('At least one profile must remain available.')
+      return
+    }
+
+    const nextDocument = removeProfileDocument(settingsDocument, selectedProfileId, profileCatalog)
+    const nextSettings = normalizeSettings(nextDocument)
+    const nextProfileId =
+      resolveProfile(nextSettings, nextSettings.defaultProfile).id ??
+      profileIdentifier(nextSettings.profiles.list[0])
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedProfileId(nextProfileId)
+  }
+
   async function handleThemeDraftSave() {
     const nextDocument = updateThemeDocument(settingsDocument, selectedThemeName, themeDraft)
     await commitSettings(nextDocument, canConnect)
@@ -631,6 +717,39 @@ function App() {
 
   function handleThemeDraftReset() {
     setThemeDraft(selectedTheme)
+  }
+
+  async function handleThemeCreate() {
+    const nextTheme = createThemeDraft(themeCatalog)
+    const nextDocument = updateThemeDocument(settingsDocument, nextTheme.name, nextTheme)
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedThemeName(nextTheme.name)
+  }
+
+  async function handleThemeDuplicate() {
+    const nextTheme = duplicateThemeDraft(selectedTheme, themeCatalog)
+    const nextDocument = updateThemeDocument(settingsDocument, nextTheme.name, nextTheme)
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedThemeName(nextTheme.name)
+  }
+
+  async function handleThemeDelete() {
+    if (themeCatalog.length <= 1) {
+      setSettingsError('At least one theme must remain available.')
+      return
+    }
+
+    const nextDocument = removeThemeDocument(settingsDocument, selectedThemeName, themeCatalog)
+    const nextSettings = normalizeSettings(nextDocument)
+    const nextThemeName =
+      resolveThemeName(nextSettings.theme, uiAppearance) ??
+      nextSettings.themes?.[0]?.name ??
+      'Theme'
+
+    await commitSettings(nextDocument, canConnect)
+    setSelectedThemeName(nextThemeName)
   }
 
   function patchThemeDraft(patch: Partial<TerminalTheme>) {
@@ -694,7 +813,7 @@ function App() {
       await commitSettings(parseSettingsDraft(settingsDraft), canConnect)
     } catch {
       setSaveState('error')
-      setSettingsError('The settings draft is not valid profile JSON.')
+      setSettingsError('The settings draft is not valid shared settings JSON.')
     }
   }
 
@@ -709,10 +828,727 @@ function App() {
   }
 
   function revealSettings(section: SettingsSection) {
-    setIsRailCollapsed(false)
-    setActiveSettingsSection(section)
-    setIsSettingsOpen(true)
+    openSettingsWorkspace(section)
   }
+
+  const terminalWorkspace = (
+    <div className={`workspace-grid workspace-grid-${currentTab.layout}`}>
+      {visiblePaneSessions.map((session) => {
+        const profile = resolveProfile(settings, session.profileId)
+        const scheme = resolveScheme(settings, profile, uiAppearance)
+        const viewportScheme = {
+          ...scheme,
+          background: applyColorOpacity(scheme.background, profile.opacity ?? 100),
+        }
+        const isFocusedPane = session.id === activeSessionId && activeWorkspace === 'terminal'
+
+        return (
+          <section
+            key={`${session.id}-${canConnect ? 'live' : 'offline'}`}
+            className={`pane-shell ${isFocusedPane ? 'is-active' : ''}`}
+            aria-label={`${sessionTitle(session, profile)} pane`}
+            style={
+              {
+                '--pane-terminal-bg': viewportScheme.background,
+                '--pane-terminal-blur': profile.useAcrylic ? '18px' : '0px',
+              } as CSSProperties
+            }
+            onMouseDown={() => activateSession(session.id)}
+          >
+            <div className="pane-frame" aria-hidden="true" />
+            <div className={`pane-badge ${currentTab.paneIds.length > 1 ? 'is-visible' : ''}`}>
+              <span>{profileBadge(profile)}</span>
+              <small>{sessionTitle(session, profile)}</small>
+            </div>
+            <TerminalViewport
+              active={isFocusedPane}
+              canConnect={canConnect}
+              cursorShape={profile.cursorShape}
+              fallbackLines={session.previewLines}
+              fontFamily={resolveProfileFontFace(profile)}
+              fontSize={resolveProfileFontSize(profile)}
+              lineHeight={resolveProfileLineHeight(profile)}
+              onConnectionStateChange={handleConnectionStateChange}
+              onShortcut={handleShortcut}
+              onTranscriptChange={handleTranscriptChange}
+              scheme={viewportScheme}
+              sessionId={session.id}
+            />
+          </section>
+        )
+      })}
+    </div>
+  )
+
+  const settingsWorkspace = (
+    <section className="settings-workspace" aria-label="Settings">
+      <div className="drawer-layout settings-layout">
+        <nav className="drawer-nav settings-nav" aria-label="Settings sections">
+          {SETTINGS_SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`drawer-nav-item ${activeSettingsSection === section.id ? 'is-active' : ''}`}
+              onClick={() => setActiveSettingsSection(section.id)}
+            >
+              <span className="drawer-nav-item-icon" aria-hidden="true">
+                <SettingsSectionIcon section={section.id} />
+              </span>
+              <span className="drawer-nav-item-copy">
+                <strong>{section.label}</strong>
+                <span>{section.meta}</span>
+              </span>
+            </button>
+          ))}
+
+          <article className="drawer-status-card" aria-label="Studio status">
+            <span className="header-label">Studio</span>
+            <strong>{settingsSectionMeta.label}</strong>
+            <span>{settingsSectionMeta.meta}</span>
+            <div className="status-row">
+              <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
+                {runtimeLabel}
+              </span>
+              <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
+                {saveLabel}
+              </span>
+            </div>
+            <span>
+              {activeTabLabel}
+              {currentTab.paneIds.length > 1 ? ` · ${currentTab.paneIds.length} panes` : ''}
+            </span>
+            <span>{runtimeMessage}</span>
+          </article>
+        </nav>
+
+        <div className="drawer-panel-stack">
+          {activeSettingsSection === 'appearance' ? (
+            <section className="drawer-panel">
+              <div className="section-heading section-heading-with-actions">
+                <div>
+                  <strong>Theme studio</strong>
+                  <p>
+                    Keep the shell black, the tab surfaces white, and the chrome flat while
+                    editing the shared theme payload directly.
+                  </p>
+                </div>
+                <div className="field-actions">
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={() => void handleThemeCreate()}
+                  >
+                    New theme
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={() => void handleThemeDuplicate()}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost danger"
+                    onClick={() => void handleThemeDelete()}
+                    disabled={themeCatalog.length <= 1}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <section className="drawer-overview" aria-label="Appearance overview">
+                <article className="summary-card">
+                  <span className="header-label">Applied</span>
+                  <strong>{themeName}</strong>
+                  <span>{uiAppearance} shell</span>
+                </article>
+                <article className="summary-card">
+                  <span className="header-label">Row</span>
+                  <strong>{activeTheme?.tabRow?.background ?? '#efefef'}</strong>
+                  <span>tab strip</span>
+                </article>
+                <article className="summary-card">
+                  <span className="header-label">Surface</span>
+                  <strong>{activeTheme?.tab?.background ?? '#ffffff'}</strong>
+                  <span>{activeScheme.name}</span>
+                </article>
+              </section>
+
+              <section className="drawer-section studio-layout">
+                <div className="studio-list" aria-label="Themes">
+                  {themeCatalog.map((theme) => {
+                    const previewTheme = resolveUiTheme(
+                      { ...settings, theme: theme.name },
+                      activeProfile,
+                      uiAppearance,
+                    )
+                    const isSelected = theme.name === selectedThemeName
+                    const isApplied = theme.name === themeName
+
+                    return (
+                      <button
+                        key={theme.name}
+                        type="button"
+                        className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
+                        onClick={() => setSelectedThemeName(theme.name)}
+                      >
+                        <span
+                          className="studio-swatch"
+                          style={
+                            {
+                              '--swatch-accent': previewTheme.tabActive,
+                              '--swatch-muted': previewTheme.tabStrip,
+                              '--swatch-shell': previewTheme.terminalBackground,
+                            } as CSSProperties
+                          }
+                        />
+                        <div className="studio-list-copy">
+                          <strong>{theme.name}</strong>
+                          <span>{isApplied ? 'active shell theme' : 'saved theme'}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="studio-form">
+                  <div className="section-heading">
+                    <strong>{themeDraft.name}</strong>
+                    <p>
+                      These fields write back to the shared `themes[]` payload and keep the shell
+                      surface flat.
+                    </p>
+                  </div>
+
+                  <div className="theme-preview" aria-hidden="true">
+                    <div
+                      className="theme-preview-strip"
+                      style={{ background: themeDraft.tabRow?.background ?? '#efefef' }}
+                    >
+                      <span
+                        className="theme-preview-tab is-active"
+                        style={{ background: themeDraft.tab?.background ?? '#ffffff' }}
+                      >
+                        selected
+                      </span>
+                      <span
+                        className="theme-preview-tab"
+                        style={{
+                          background: themeDraft.tab?.unfocusedBackground ?? '#f4f4f4',
+                        }}
+                      >
+                        idle
+                      </span>
+                    </div>
+                    <div
+                      className="theme-preview-terminal"
+                      style={{
+                        background: activeScheme.background,
+                        color: activeScheme.foreground,
+                      }}
+                    >
+                      {themeDraft.window?.applicationTheme ?? 'system'} shell
+                    </div>
+                  </div>
+
+                  <div className="field-grid">
+                    <label className="field-row">
+                      <span>Theme name</span>
+                      <input
+                        className="field-input"
+                        value={themeDraft.name}
+                        onChange={(event) => patchThemeDraft({ name: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>App appearance</span>
+                      <select
+                        className="field-input"
+                        value={themeDraft.window?.applicationTheme ?? 'system'}
+                        onChange={(event) =>
+                          patchThemeWindow({
+                            applicationTheme: event.target.value as
+                              | 'system'
+                              | 'dark'
+                              | 'light',
+                          })
+                        }
+                      >
+                        <option value="system">system</option>
+                        <option value="dark">dark</option>
+                        <option value="light">light</option>
+                      </select>
+                    </label>
+
+                    <label className="field-row">
+                      <span>Active tab</span>
+                      <input
+                        className="field-input"
+                        value={themeDraft.tab?.background ?? ''}
+                        placeholder="#ffffff"
+                        onChange={(event) => patchThemeTab({ background: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Inactive tab</span>
+                      <input
+                        className="field-input"
+                        value={themeDraft.tab?.unfocusedBackground ?? ''}
+                        placeholder="#f4f4f4"
+                        onChange={(event) =>
+                          patchThemeTab({ unfocusedBackground: event.target.value })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Tab strip</span>
+                      <input
+                        className="field-input"
+                        value={themeDraft.tabRow?.background ?? ''}
+                        placeholder="#efefef"
+                        onChange={(event) =>
+                          patchThemeTabRow({ background: event.target.value })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Strip inactive</span>
+                      <input
+                        className="field-input"
+                        value={themeDraft.tabRow?.unfocusedBackground ?? ''}
+                        placeholder="#e7e7e7"
+                        onChange={(event) =>
+                          patchThemeTabRow({
+                            unfocusedBackground: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Close button</span>
+                      <select
+                        className="field-input"
+                        value={themeDraft.tab?.showCloseButton ?? 'hover'}
+                        onChange={(event) =>
+                          patchThemeTab({
+                            showCloseButton: event.target.value as
+                              | 'always'
+                              | 'hover'
+                              | 'never'
+                              | 'activeOnly',
+                          })
+                        }
+                      >
+                        <option value="hover">hover</option>
+                        <option value="activeOnly">active only</option>
+                        <option value="always">always</option>
+                        <option value="never">never</option>
+                      </select>
+                    </label>
+
+                    <label className="field-row field-row-toggle">
+                      <span>Mica tint</span>
+                      <input
+                        type="checkbox"
+                        checked={themeDraft.window?.useMica ?? false}
+                        onChange={(event) =>
+                          patchThemeWindow({ useMica: event.target.checked })
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="field-actions">
+                    <button
+                      type="button"
+                      className="toolbar-button"
+                      onClick={() => void handleThemeDraftSave()}
+                    >
+                      Save theme
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-button ghost"
+                      onClick={() => void handleThemeDraftApply()}
+                    >
+                      Use on this shell
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-button ghost"
+                      onClick={handleThemeDraftReset}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </section>
+          ) : null}
+
+          {activeSettingsSection === 'profiles' ? (
+            <section className="drawer-panel">
+              <div className="section-heading section-heading-with-actions">
+                <div>
+                  <strong>Profile studio</strong>
+                  <p>
+                    Edit launch command, prompt-facing metadata, and terminal font behavior
+                    without leaving the shell.
+                  </p>
+                </div>
+                <div className="field-actions">
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={() => void handleProfileCreate()}
+                  >
+                    New profile
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost"
+                    onClick={() => void handleProfileDuplicate()}
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    className="toolbar-button ghost danger"
+                    onClick={() => void handleProfileDelete()}
+                    disabled={profileCatalog.length <= 1}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+
+              <section className="drawer-section studio-layout">
+                <div className="studio-list" aria-label="Profiles">
+                  {profileCatalog.map((profile) => {
+                    const isSelected = profile.id === selectedProfileId
+                    const isDefault = profile.id === defaultProfile.id
+
+                    return (
+                      <button
+                        key={profile.id}
+                        type="button"
+                        className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
+                        onClick={() => setSelectedProfileId(profile.id)}
+                      >
+                        <ProfileGlyph profile={profile} compact />
+                        <div className="studio-list-copy">
+                          <strong>{profile.name}</strong>
+                          <span>{profile.commandline ?? 'default shell'}</span>
+                        </div>
+                        <span className="profile-badge">
+                          {isDefault ? 'default' : profile.hidden ? 'hidden' : 'live'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="studio-form">
+                  <div className="section-heading">
+                    <strong>{profileDraft.name}</strong>
+                    <p>
+                      {promptPrefixForProfile(
+                        profileDraft,
+                        profileDraft.startingDirectory ?? '~',
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="field-grid field-grid-wide">
+                    <label className="field-row">
+                      <span>Profile name</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.name}
+                        onChange={(event) => patchProfileDraft({ name: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Icon or badge</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.icon ?? ''}
+                        placeholder="PS"
+                        onChange={(event) => patchProfileDraft({ icon: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row field-row-span">
+                      <span>Command line</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.commandline ?? ''}
+                        placeholder="pwsh.exe"
+                        onChange={(event) =>
+                          patchProfileDraft({ commandline: event.target.value })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row field-row-span">
+                      <span>Starting directory</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.startingDirectory ?? ''}
+                        placeholder="%USERPROFILE%"
+                        onChange={(event) =>
+                          patchProfileDraft({ startingDirectory: event.target.value })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Tab title</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.tabTitle ?? ''}
+                        placeholder="Admin"
+                        onChange={(event) => patchProfileDraft({ tabTitle: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Tab accent</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.tabColor ?? ''}
+                        placeholder="#3b78ff"
+                        onChange={(event) => patchProfileDraft({ tabColor: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Color scheme</span>
+                      <select
+                        className="field-input"
+                        value={selectedProfileSchemeName}
+                        onChange={(event) =>
+                          patchProfileDraft({ colorScheme: event.target.value })
+                        }
+                      >
+                        {(settings.schemes ?? []).map((scheme) => (
+                          <option key={scheme.name} value={scheme.name}>
+                            {scheme.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="field-row">
+                      <span>Font face</span>
+                      <input
+                        className="field-input"
+                        value={resolveProfileFontFace(profileDraft)}
+                        placeholder="Cascadia Mono"
+                        onChange={(event) => patchProfileFont({ face: event.target.value })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Font size</span>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={resolveProfileFontSize(profileDraft)}
+                        onChange={(event) =>
+                          patchProfileFont({
+                            size: readOptionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Line height</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="field-input"
+                        value={profileDraft.lineHeight ?? ''}
+                        onChange={(event) =>
+                          patchProfileDraft({
+                            lineHeight: readOptionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <span>Cursor</span>
+                      <select
+                        className="field-input"
+                        value={profileDraft.cursorShape ?? 'bar'}
+                        onChange={(event) =>
+                          patchProfileDraft({
+                            cursorShape: event.target.value as TerminalProfile['cursorShape'],
+                          })
+                        }
+                      >
+                        <option value="bar">bar</option>
+                        <option value="block">block</option>
+                        <option value="filledBox">filled box</option>
+                        <option value="emptyBox">empty box</option>
+                        <option value="doubleUnderscore">double underscore</option>
+                        <option value="underline">underline</option>
+                        <option value="underscore">underscore</option>
+                        <option value="vintage">vintage</option>
+                      </select>
+                    </label>
+
+                    <label className="field-row">
+                      <span>Opacity</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        className="field-input"
+                        value={profileDraft.opacity ?? ''}
+                        onChange={(event) =>
+                          patchProfileDraft({
+                            opacity: readOptionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row field-row-toggle">
+                      <span>Acrylic blur</span>
+                      <input
+                        type="checkbox"
+                        checked={profileDraft.useAcrylic ?? false}
+                        onChange={(event) =>
+                          patchProfileDraft({ useAcrylic: event.target.checked })
+                        }
+                      />
+                    </label>
+
+                    <label className="field-row field-row-toggle">
+                      <span>Hidden</span>
+                      <input
+                        type="checkbox"
+                        checked={profileDraft.hidden ?? false}
+                        onChange={(event) => patchProfileDraft({ hidden: event.target.checked })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="field-actions">
+                    <button
+                      type="button"
+                      className="toolbar-button"
+                      onClick={() => void handleProfileDraftSave()}
+                    >
+                      Save profile
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-button ghost"
+                      onClick={() => void createSession(selectedProfileId)}
+                      disabled={profileDraft.hidden === true}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-button ghost"
+                      onClick={() => void handleProfileDraftDefault()}
+                    >
+                      Use at startup
+                    </button>
+                    <button
+                      type="button"
+                      className="toolbar-button ghost"
+                      onClick={handleProfileDraftReset}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </section>
+          ) : null}
+
+          {activeSettingsSection === 'json' ? (
+            <section className="drawer-panel studio-editor">
+              <div className="section-heading">
+                <strong>settings.json</strong>
+                <p>
+                  Comments and trailing commas stay valid in the editor, and unknown keys
+                  continue to round-trip.
+                </p>
+              </div>
+
+              <textarea
+                className="settings-editor"
+                spellCheck={false}
+                value={settingsDraft}
+                onChange={(event) => {
+                  setSettingsDraft(event.target.value)
+                  setSettingsError(null)
+                  if (saveState !== 'saving') {
+                    setSaveState('idle')
+                  }
+                }}
+              />
+
+              {settingsError ? <p className="settings-error">{settingsError}</p> : null}
+
+              <div className="editor-actions">
+                <button
+                  type="button"
+                  className="toolbar-button"
+                  onClick={() => void handleSettingsSave()}
+                  disabled={!isDraftDirty}
+                >
+                  Save settings
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button ghost"
+                  onClick={handleSettingsReset}
+                >
+                  Reset draft
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {activeSettingsSection === 'shortcuts' ? (
+            <section className="drawer-panel">
+              <div className="section-heading">
+                <strong>Shortcuts</strong>
+                <p>
+                  Resolved from the shared `actions[]` payload, including object-form commands.
+                </p>
+              </div>
+
+              <section className="shortcut-list" aria-label="Keyboard shortcuts">
+                {shortcutSummary.map((shortcut) => (
+                  <article key={`${shortcut.command}-${shortcut.keys}`} className="shortcut-row">
+                    <strong>{shortcut.command}</strong>
+                    <span className="shortcut-pill">{shortcut.keys}</span>
+                  </article>
+                ))}
+              </section>
+            </section>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  )
 
   return (
     <main className="terminal-app" style={themeVars(uiTheme)}>
@@ -721,694 +1557,10 @@ function App() {
         data-rail-collapsed={isRailCollapsed}
       >
         <section className="viewport-stage" aria-label="Terminal workspace">
-          <div className="terminal-stage">
-            <div className={`workspace-grid workspace-grid-${currentTab.layout}`}>
-              {visiblePaneSessions.map((session) => {
-                const profile = resolveProfile(settings, session.profileId)
-                const scheme = resolveScheme(settings, profile, uiAppearance)
-                const viewportScheme = {
-                  ...scheme,
-                  background: applyColorOpacity(scheme.background, profile.opacity ?? 100),
-                }
-                const isFocusedPane = session.id === activeSessionId && !isSettingsOpen
-
-                return (
-                  <section
-                    key={`${session.id}-${canConnect ? 'live' : 'offline'}`}
-                    className={`pane-shell ${isFocusedPane ? 'is-active' : ''}`}
-                    aria-label={`${sessionTitle(session, profile)} pane`}
-                    style={
-                      {
-                        '--pane-terminal-bg': viewportScheme.background,
-                        '--pane-terminal-blur': profile.useAcrylic ? '18px' : '0px',
-                      } as CSSProperties
-                    }
-                    onMouseDown={() => activateSession(session.id)}
-                  >
-                    <div className="pane-frame" aria-hidden="true" />
-                    <div
-                      className={`pane-badge ${currentTab.paneIds.length > 1 ? 'is-visible' : ''}`}
-                    >
-                      <span>{profileBadge(profile)}</span>
-                      <small>{sessionTitle(session, profile)}</small>
-                    </div>
-                    <TerminalViewport
-                      active={isFocusedPane}
-                      canConnect={canConnect}
-                      cursorShape={profile.cursorShape}
-                      fallbackLines={session.previewLines}
-                      fontFamily={resolveProfileFontFace(profile)}
-                      fontSize={resolveProfileFontSize(profile)}
-                      lineHeight={resolveProfileLineHeight(profile)}
-                      onConnectionStateChange={handleConnectionStateChange}
-                      onShortcut={handleShortcut}
-                      onTranscriptChange={handleTranscriptChange}
-                      scheme={viewportScheme}
-                      sessionId={session.id}
-                    />
-                  </section>
-                )
-              })}
-            </div>
-
-            <button
-              type="button"
-              className={`settings-scrim ${isSettingsOpen ? 'is-open' : ''}`}
-              aria-hidden={!isSettingsOpen}
-              tabIndex={isSettingsOpen ? 0 : -1}
-              onClick={() => setIsSettingsOpen(false)}
-            />
-
-            <aside
-              className={`settings-drawer ${isSettingsOpen ? 'is-open' : ''}`}
-              aria-label="Settings"
-            >
-              <div className="drawer-header">
-                <div className="drawer-header-copy">
-                  <span className="header-label">Settings</span>
-                  <strong>{settingsSectionMeta.label}</strong>
-                  <p>{settingsSectionMeta.meta}</p>
-                </div>
-                <div className="drawer-header-actions">
-                  <span className={`status-pill ${canConnect ? 'is-live' : 'subtle'}`}>
-                    {runtimeLabel}
-                  </span>
-                  <span className={`status-pill ${saveState === 'saved' ? 'is-live' : 'subtle'}`}>
-                    {saveLabel}
-                  </span>
-                  <button
-                    type="button"
-                    className="toolbar-button ghost"
-                    onClick={() => setIsSettingsOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-
-              <div className="drawer-layout">
-                <nav className="drawer-nav" aria-label="Settings sections">
-                  {SETTINGS_SECTIONS.map((section) => (
-                    <button
-                      key={section.id}
-                      type="button"
-                      className={`drawer-nav-item ${
-                        activeSettingsSection === section.id ? 'is-active' : ''
-                      }`}
-                      onClick={() => setActiveSettingsSection(section.id)}
-                    >
-                      <span className="drawer-nav-item-icon" aria-hidden="true">
-                        <SettingsSectionIcon section={section.id} />
-                      </span>
-                      <span className="drawer-nav-item-copy">
-                        <strong>{section.label}</strong>
-                        <span>{section.meta}</span>
-                      </span>
-                    </button>
-                  ))}
-
-                  <article className="drawer-status-card" aria-label="Shell overview">
-                    <span className="header-label">Focused</span>
-                    <strong>{activeTabLabel}</strong>
-                    <span>
-                      {currentTab.paneIds.length > 1
-                        ? `${currentTab.paneIds.length} panes · ${activeSession.cwd}`
-                        : activeSession.cwd}
-                    </span>
-                    <span>{runtimeMessage}</span>
-                  </article>
-                </nav>
-
-                <div className="drawer-panel-stack">
-                  {activeSettingsSection === 'appearance' ? (
-                    <section className="drawer-panel">
-                      <div className="section-heading">
-                        <strong>Theme studio</strong>
-                        <p>Keep the shell black, the tab surfaces white, and the chrome flat while editing the shared theme payload directly.</p>
-                      </div>
-
-                      <section className="drawer-overview" aria-label="Appearance overview">
-                        <article className="summary-card">
-                          <span className="header-label">Applied</span>
-                          <strong>{themeName}</strong>
-                          <span>{uiAppearance} shell</span>
-                        </article>
-                        <article className="summary-card">
-                          <span className="header-label">Row</span>
-                          <strong>{activeTheme?.tabRow?.background ?? '#efefef'}</strong>
-                          <span>tab strip</span>
-                        </article>
-                        <article className="summary-card">
-                          <span className="header-label">Surface</span>
-                          <strong>{activeTheme?.tab?.background ?? '#ffffff'}</strong>
-                          <span>{activeScheme.name}</span>
-                        </article>
-                      </section>
-
-                      <section className="drawer-section studio-layout">
-                        <div className="studio-list" aria-label="Themes">
-                          {themeCatalog.map((theme) => {
-                            const previewTheme = resolveUiTheme(
-                              { ...settings, theme: theme.name },
-                              activeProfile,
-                              uiAppearance,
-                            )
-                            const isSelected = theme.name === selectedThemeName
-                            const isApplied = theme.name === themeName
-
-                            return (
-                              <button
-                                key={theme.name}
-                                type="button"
-                                className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
-                                onClick={() => setSelectedThemeName(theme.name)}
-                              >
-                                <span
-                                  className="studio-swatch"
-                                  style={
-                                    {
-                                      '--swatch-accent': previewTheme.tabActive,
-                                      '--swatch-muted': previewTheme.tabStrip,
-                                      '--swatch-shell': previewTheme.terminalBackground,
-                                    } as CSSProperties
-                                  }
-                                />
-                                <div className="studio-list-copy">
-                                  <strong>{theme.name}</strong>
-                                  <span>{isApplied ? 'active shell theme' : 'saved theme'}</span>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-
-                        <div className="studio-form">
-                          <div className="section-heading">
-                            <strong>{themeDraft.name}</strong>
-                            <p>These fields write back to the shared `themes[]` payload and keep the shell surface flat.</p>
-                          </div>
-
-                          <div className="theme-preview" aria-hidden="true">
-                            <div
-                              className="theme-preview-strip"
-                              style={{ background: themeDraft.tabRow?.background ?? '#efefef' }}
-                            >
-                              <span
-                                className="theme-preview-tab is-active"
-                                style={{ background: themeDraft.tab?.background ?? '#ffffff' }}
-                              >
-                                selected
-                              </span>
-                              <span
-                                className="theme-preview-tab"
-                                style={{
-                                  background:
-                                    themeDraft.tab?.unfocusedBackground ?? '#f4f4f4',
-                                }}
-                              >
-                                idle
-                              </span>
-                            </div>
-                            <div
-                              className="theme-preview-terminal"
-                              style={{
-                                background: activeScheme.background,
-                                color: activeScheme.foreground,
-                              }}
-                            >
-                              {themeDraft.window?.applicationTheme ?? 'system'} shell
-                            </div>
-                          </div>
-
-                          <div className="field-grid">
-                            <label className="field-row">
-                              <span>Theme name</span>
-                              <input
-                                className="field-input"
-                                value={themeDraft.name}
-                                onChange={(event) => patchThemeDraft({ name: event.target.value })}
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>App appearance</span>
-                              <select
-                                className="field-input"
-                                value={themeDraft.window?.applicationTheme ?? 'system'}
-                                onChange={(event) =>
-                                  patchThemeWindow({
-                                    applicationTheme: event.target.value as
-                                      | 'system'
-                                      | 'dark'
-                                      | 'light',
-                                  })
-                                }
-                              >
-                                <option value="system">system</option>
-                                <option value="dark">dark</option>
-                                <option value="light">light</option>
-                              </select>
-                            </label>
-
-                            <label className="field-row">
-                              <span>Active tab</span>
-                              <input
-                                className="field-input"
-                                value={themeDraft.tab?.background ?? ''}
-                                placeholder="#ffffff"
-                                onChange={(event) =>
-                                  patchThemeTab({ background: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Inactive tab</span>
-                              <input
-                                className="field-input"
-                                value={themeDraft.tab?.unfocusedBackground ?? ''}
-                                placeholder="#f4f4f4"
-                                onChange={(event) =>
-                                  patchThemeTab({ unfocusedBackground: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Tab strip</span>
-                              <input
-                                className="field-input"
-                                value={themeDraft.tabRow?.background ?? ''}
-                                placeholder="#efefef"
-                                onChange={(event) =>
-                                  patchThemeTabRow({ background: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Strip inactive</span>
-                              <input
-                                className="field-input"
-                                value={themeDraft.tabRow?.unfocusedBackground ?? ''}
-                                placeholder="#e7e7e7"
-                                onChange={(event) =>
-                                  patchThemeTabRow({
-                                    unfocusedBackground: event.target.value,
-                                  })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Close button</span>
-                              <select
-                                className="field-input"
-                                value={themeDraft.tab?.showCloseButton ?? 'hover'}
-                                onChange={(event) =>
-                                  patchThemeTab({
-                                    showCloseButton: event.target.value as
-                                      | 'always'
-                                      | 'hover'
-                                      | 'never'
-                                      | 'activeOnly',
-                                  })
-                                }
-                              >
-                                <option value="hover">hover</option>
-                                <option value="activeOnly">active only</option>
-                                <option value="always">always</option>
-                                <option value="never">never</option>
-                              </select>
-                            </label>
-
-                            <label className="field-row field-row-toggle">
-                              <span>Mica tint</span>
-                              <input
-                                type="checkbox"
-                                checked={themeDraft.window?.useMica ?? false}
-                                onChange={(event) =>
-                                  patchThemeWindow({ useMica: event.target.checked })
-                                }
-                              />
-                            </label>
-                          </div>
-
-                          <div className="field-actions">
-                            <button
-                              type="button"
-                              className="toolbar-button"
-                              onClick={() => void handleThemeDraftSave()}
-                            >
-                              Save theme
-                            </button>
-                            <button
-                              type="button"
-                              className="toolbar-button ghost"
-                              onClick={() => void handleThemeDraftApply()}
-                            >
-                              Use on this shell
-                            </button>
-                            <button
-                              type="button"
-                              className="toolbar-button ghost"
-                              onClick={handleThemeDraftReset}
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        </div>
-                      </section>
-                    </section>
-                  ) : null}
-
-                  {activeSettingsSection === 'profiles' ? (
-                    <section className="drawer-panel">
-                      <div className="section-heading">
-                        <strong>Profile studio</strong>
-                        <p>Edit launch command, prompt-facing metadata, and terminal font behavior without leaving the shell.</p>
-                      </div>
-
-                      <section className="drawer-section studio-layout">
-                        <div className="studio-list" aria-label="Profiles">
-                          {profileCatalog.map((profile) => {
-                            const isSelected = profile.id === selectedProfileId
-                            const isDefault = profile.id === defaultProfile.id
-
-                            return (
-                              <button
-                                key={profile.id}
-                                type="button"
-                                className={`studio-list-item ${isSelected ? 'is-selected' : ''}`}
-                                onClick={() => setSelectedProfileId(profile.id)}
-                              >
-                                <ProfileGlyph profile={profile} compact />
-                                <div className="studio-list-copy">
-                                  <strong>{profile.name}</strong>
-                                  <span>{profile.commandline ?? 'default shell'}</span>
-                                </div>
-                                <span className="profile-badge">
-                                  {isDefault ? 'default' : profile.hidden ? 'hidden' : 'live'}
-                                </span>
-                              </button>
-                            )
-                          })}
-                        </div>
-
-                        <div className="studio-form">
-                          <div className="section-heading">
-                            <strong>{profileDraft.name}</strong>
-                            <p>{promptPrefixForProfile(profileDraft, profileDraft.startingDirectory ?? '~')}</p>
-                          </div>
-
-                          <div className="field-grid field-grid-wide">
-                            <label className="field-row">
-                              <span>Profile name</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.name}
-                                onChange={(event) => patchProfileDraft({ name: event.target.value })}
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Icon or badge</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.icon ?? ''}
-                                placeholder="PS"
-                                onChange={(event) => patchProfileDraft({ icon: event.target.value })}
-                              />
-                            </label>
-
-                            <label className="field-row field-row-span">
-                              <span>Command line</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.commandline ?? ''}
-                                placeholder="pwsh.exe"
-                                onChange={(event) =>
-                                  patchProfileDraft({ commandline: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row field-row-span">
-                              <span>Starting directory</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.startingDirectory ?? ''}
-                                placeholder="%USERPROFILE%"
-                                onChange={(event) =>
-                                  patchProfileDraft({ startingDirectory: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Tab title</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.tabTitle ?? ''}
-                                placeholder="Admin"
-                                onChange={(event) =>
-                                  patchProfileDraft({ tabTitle: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Tab accent</span>
-                              <input
-                                className="field-input"
-                                value={profileDraft.tabColor ?? ''}
-                                placeholder="#3b78ff"
-                                onChange={(event) =>
-                                  patchProfileDraft({ tabColor: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Color scheme</span>
-                              <select
-                                className="field-input"
-                                value={selectedProfileSchemeName}
-                                onChange={(event) =>
-                                  patchProfileDraft({ colorScheme: event.target.value })
-                                }
-                              >
-                                {(settings.schemes ?? []).map((scheme) => (
-                                  <option key={scheme.name} value={scheme.name}>
-                                    {scheme.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label className="field-row">
-                              <span>Font face</span>
-                              <input
-                                className="field-input"
-                                value={resolveProfileFontFace(profileDraft)}
-                                placeholder="Cascadia Mono"
-                                onChange={(event) =>
-                                  patchProfileFont({ face: event.target.value })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Font size</span>
-                              <input
-                                type="number"
-                                className="field-input"
-                                value={resolveProfileFontSize(profileDraft)}
-                                onChange={(event) =>
-                                  patchProfileFont({
-                                    size: readOptionalNumber(event.target.value),
-                                  })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Line height</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                className="field-input"
-                                value={profileDraft.lineHeight ?? ''}
-                                onChange={(event) =>
-                                  patchProfileDraft({
-                                    lineHeight: readOptionalNumber(event.target.value),
-                                  })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row">
-                              <span>Cursor</span>
-                              <select
-                                className="field-input"
-                                value={profileDraft.cursorShape ?? 'bar'}
-                                onChange={(event) =>
-                                  patchProfileDraft({
-                                    cursorShape: event.target.value as TerminalProfile['cursorShape'],
-                                  })
-                                }
-                              >
-                                <option value="bar">bar</option>
-                                <option value="block">block</option>
-                                <option value="filledBox">filled box</option>
-                                <option value="emptyBox">empty box</option>
-                                <option value="doubleUnderscore">double underscore</option>
-                                <option value="underline">underline</option>
-                                <option value="underscore">underscore</option>
-                                <option value="vintage">vintage</option>
-                              </select>
-                            </label>
-
-                            <label className="field-row">
-                              <span>Opacity</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                className="field-input"
-                                value={profileDraft.opacity ?? ''}
-                                onChange={(event) =>
-                                  patchProfileDraft({
-                                    opacity: readOptionalNumber(event.target.value),
-                                  })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row field-row-toggle">
-                              <span>Acrylic blur</span>
-                              <input
-                                type="checkbox"
-                                checked={profileDraft.useAcrylic ?? false}
-                                onChange={(event) =>
-                                  patchProfileDraft({ useAcrylic: event.target.checked })
-                                }
-                              />
-                            </label>
-
-                            <label className="field-row field-row-toggle">
-                              <span>Hidden</span>
-                              <input
-                                type="checkbox"
-                                checked={profileDraft.hidden ?? false}
-                                onChange={(event) =>
-                                  patchProfileDraft({ hidden: event.target.checked })
-                                }
-                              />
-                            </label>
-                          </div>
-
-                          <div className="field-actions">
-                            <button
-                              type="button"
-                              className="toolbar-button"
-                              onClick={() => void handleProfileDraftSave()}
-                            >
-                              Save profile
-                            </button>
-                            <button
-                              type="button"
-                              className="toolbar-button ghost"
-                              onClick={() => void createSession(selectedProfileId)}
-                              disabled={profileDraft.hidden === true}
-                            >
-                              Open
-                            </button>
-                            <button
-                              type="button"
-                              className="toolbar-button ghost"
-                              onClick={() => void handleProfileDraftDefault()}
-                            >
-                              Use at startup
-                            </button>
-                            <button
-                              type="button"
-                              className="toolbar-button ghost"
-                              onClick={handleProfileDraftReset}
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        </div>
-                      </section>
-                    </section>
-                  ) : null}
-
-                  {activeSettingsSection === 'json' ? (
-                    <section className="drawer-panel studio-editor">
-                      <div className="section-heading">
-                        <strong>settings.json</strong>
-                        <p>Comments and trailing commas stay valid in the editor, and unknown keys continue to round-trip.</p>
-                      </div>
-
-                      <textarea
-                        className="settings-editor"
-                        spellCheck={false}
-                        value={settingsDraft}
-                        onChange={(event) => {
-                          setSettingsDraft(event.target.value)
-                          setSettingsError(null)
-                          if (saveState !== 'saving') {
-                            setSaveState('idle')
-                          }
-                        }}
-                      />
-
-                      {settingsError ? <p className="settings-error">{settingsError}</p> : null}
-
-                      <div className="editor-actions">
-                        <button
-                          type="button"
-                          className="toolbar-button"
-                          onClick={() => void handleSettingsSave()}
-                          disabled={!isDraftDirty}
-                        >
-                          Save settings
-                        </button>
-                        <button
-                          type="button"
-                          className="toolbar-button ghost"
-                          onClick={handleSettingsReset}
-                        >
-                          Reset draft
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
-
-                  {activeSettingsSection === 'shortcuts' ? (
-                    <section className="drawer-panel">
-                      <div className="section-heading">
-                        <strong>Shortcuts</strong>
-                        <p>Resolved from the shared `actions[]` payload, including object-form commands.</p>
-                      </div>
-
-                      <section className="shortcut-list" aria-label="Keyboard shortcuts">
-                        {shortcutSummary.map((shortcut) => (
-                          <article
-                            key={`${shortcut.command}-${shortcut.keys}`}
-                            className="shortcut-row"
-                          >
-                            <strong>{shortcut.command}</strong>
-                            <span className="shortcut-pill">{shortcut.keys}</span>
-                          </article>
-                        ))}
-                      </section>
-                    </section>
-                  ) : null}
-                </div>
-              </div>
-            </aside>
+          <div
+            className={`terminal-stage ${activeWorkspace === 'settings' ? 'is-settings-workspace' : ''}`}
+          >
+            {activeWorkspace === 'settings' ? settingsWorkspace : terminalWorkspace}
           </div>
         </section>
 
@@ -1430,7 +1582,9 @@ function App() {
 
             <button
               type="button"
-              className={`rail-action rail-action-settings ${isSettingsOpen ? 'is-active' : ''}`}
+              className={`rail-action rail-action-settings ${
+                activeWorkspace === 'settings' ? 'is-active' : ''
+              }`}
               aria-label="Open settings"
               title="Open settings"
               onClick={() => revealSettings('appearance')}
@@ -1439,13 +1593,44 @@ function App() {
             </button>
           </div>
 
-          <div className="rail-list" role="tablist" aria-label="Sessions">
+          <div className="rail-list" role="tablist" aria-label="Workspaces">
+            {isSettingsOpen ? (
+              <div className={`rail-tab-shell ${activeWorkspace === 'settings' ? 'is-active' : ''}`}>
+                <button
+                  type="button"
+                  className="rail-tab rail-tab-settings"
+                  role="tab"
+                  aria-selected={activeWorkspace === 'settings'}
+                  aria-label="Settings tab"
+                  title={settingsSectionMeta.label}
+                  onClick={() => setActiveWorkspace('settings')}
+                >
+                  <span className="rail-tab-status rail-tab-status-settings" />
+                  <span className="rail-tab-icon">
+                    <SettingsGlyph />
+                  </span>
+                  <span className="rail-tab-copy">settings</span>
+                </button>
+
+                {closeButtonMode !== 'never' ? (
+                  <button
+                    type="button"
+                    className="rail-tab-close"
+                    onClick={closeSettingsWorkspace}
+                    aria-label="Close settings"
+                  >
+                    <CloseGlyph />
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             {tabs.map((tab) => {
               const primarySession =
                 sessions.find((session) => session.id === tab.paneIds[0]) ?? activeSession
               const profile = resolveProfile(settings, primarySession.profileId)
               const tabLabel = tabLabelForTab(tab, sessions, settings)
-              const isActive = tab.id === currentTab.id
+              const isActive = activeWorkspace === 'terminal' && tab.id === currentTab.id
 
               return (
                 <div
@@ -1460,10 +1645,7 @@ function App() {
                     aria-selected={isActive}
                     aria-label={`${tabLabel} tab`}
                     title={`${tabLabel} · ${profile.name}`}
-                    onClick={() => {
-                      setActiveTabId(tab.id)
-                      activateSession(tab.paneIds[0])
-                    }}
+                    onClick={() => activateSession(tab.paneIds[0])}
                   >
                     <span
                       className={`rail-tab-status rail-tab-status-${primarySession.status}`}
@@ -1524,7 +1706,7 @@ function App() {
             </button>
             <button
               type="button"
-              className={`rail-action ${isSettingsOpen ? 'is-active' : ''}`}
+              className={`rail-action ${activeWorkspace === 'settings' ? 'is-active' : ''}`}
               aria-label="Edit settings.json"
               title="Edit settings.json"
               onClick={() => revealSettings('json')}
@@ -2257,6 +2439,121 @@ function updateThemeSelectionDocument(
   }
 }
 
+function createThemeDraft(existingThemes: TerminalTheme[]): TerminalTheme {
+  return {
+    name: nextUniqueLabel(
+      existingThemes.map((theme) => theme.name),
+      'Theme',
+    ),
+    window: {
+      applicationTheme: 'dark',
+      useMica: false,
+    },
+    tab: {
+      background: '#ffffff',
+      unfocusedBackground: '#f4f4f4',
+      showCloseButton: 'activeOnly',
+    },
+    tabRow: {
+      background: '#efefef',
+      unfocusedBackground: '#e7e7e7',
+    },
+  }
+}
+
+function duplicateThemeDraft(
+  source: TerminalTheme,
+  existingThemes: TerminalTheme[],
+): TerminalTheme {
+  return {
+    ...cloneJson(source),
+    name: nextUniqueLabel(
+      existingThemes.map((theme) => theme.name),
+      `${source.name} Copy`,
+    ),
+  }
+}
+
+function removeThemeDocument(
+  document: Record<string, unknown>,
+  themeName: string,
+  existingThemes: TerminalTheme[],
+) {
+  const nextDocument = cloneSettingsDocument(document)
+  const nextThemes = (Array.isArray(nextDocument.themes) ? nextDocument.themes : []).filter(
+    (entry) => !isRecord(entry) || asString(entry.name, '') !== themeName,
+  )
+  const fallbackThemeName =
+    nextThemes
+      .filter(isRecord)
+      .map((entry) => asString(entry.name, ''))
+      .find((name) => name.length > 0) ??
+    existingThemes.find((theme) => theme.name !== themeName)?.name
+
+  nextDocument.themes = nextThemes
+  nextDocument.theme = reassignThemeSelection(nextDocument.theme, themeName, fallbackThemeName)
+  return nextDocument
+}
+
+function createProfileDraft(existingProfiles: ResolvedProfile[]): TerminalProfile {
+  const template = existingProfiles[0] ?? resolveProfile(demoSettings, demoSettings.defaultProfile)
+  const { id: _id, ...draft } = cloneJson(template)
+
+  return {
+    ...draft,
+    guid: generateProfileGuid(),
+    name: nextUniqueLabel(
+      existingProfiles.map((profile) => profile.name),
+      'Profile',
+    ),
+    hidden: false,
+  }
+}
+
+function duplicateProfileDraft(
+  source: TerminalProfile,
+  existingProfiles: ResolvedProfile[],
+): TerminalProfile {
+  const { id: _id, ...draft } = cloneJson(source)
+
+  return {
+    ...draft,
+    guid: generateProfileGuid(),
+    name: nextUniqueLabel(
+      existingProfiles.map((profile) => profile.name),
+      `${source.name} Copy`,
+    ),
+    hidden: false,
+  }
+}
+
+function removeProfileDocument(
+  document: Record<string, unknown>,
+  selectedProfileId: string,
+  existingProfiles: ResolvedProfile[],
+) {
+  const nextDocument = cloneSettingsDocument(document)
+  const nextProfiles = ensureProfilesDocument(nextDocument)
+  const filteredList = nextProfiles.list.filter((entry) => {
+    const normalized = normalizeProfile(entry)
+    return !normalized || profileIdentifier(normalized) !== selectedProfileId
+  })
+  const fallbackProfile =
+    filteredList
+      .map((entry) => normalizeProfile(entry))
+      .find((profile): profile is TerminalProfile => profile !== null) ??
+    existingProfiles.find((profile) => profile.id !== selectedProfileId)
+
+  nextProfiles.list = filteredList
+  nextDocument.profiles = nextProfiles
+
+  if (nextDocument.defaultProfile === selectedProfileId && fallbackProfile) {
+    nextDocument.defaultProfile = profileIdentifier(fallbackProfile)
+  }
+
+  return nextDocument
+}
+
 function ensureProfilesDocument(document: Record<string, unknown>) {
   const current = isRecord(document.profiles) ? cloneJson(document.profiles) : {}
   return {
@@ -2355,6 +2652,57 @@ function renameThemeSelection(
     system:
       selection.system === previousName ? nextName : asOptionalString(selection.system),
   }
+}
+
+function reassignThemeSelection(
+  selection: unknown,
+  removedName: string,
+  fallbackName: string | undefined,
+): TerminalSettings['theme'] {
+  if (!fallbackName) {
+    return undefined
+  }
+
+  if (!selection) {
+    return fallbackName
+  }
+
+  if (typeof selection === 'string') {
+    return selection === removedName ? fallbackName : selection
+  }
+
+  if (!isRecord(selection)) {
+    return fallbackName
+  }
+
+  return {
+    dark: selection.dark === removedName ? fallbackName : asOptionalString(selection.dark),
+    light: selection.light === removedName ? fallbackName : asOptionalString(selection.light),
+    system:
+      selection.system === removedName ? fallbackName : asOptionalString(selection.system),
+  }
+}
+
+function nextUniqueLabel(existingNames: string[], baseLabel: string) {
+  if (!existingNames.includes(baseLabel)) {
+    return baseLabel
+  }
+
+  let suffix = 2
+  while (existingNames.includes(`${baseLabel} ${suffix}`)) {
+    suffix += 1
+  }
+
+  return `${baseLabel} ${suffix}`
+}
+
+function generateProfileGuid() {
+  const value =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `webpty-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`
+
+  return `{${value}}`
 }
 
 function assignNestedRecord(
@@ -2695,10 +3043,10 @@ function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
     lowerCommand.includes('wsl') ||
     lowerCommand.includes('bash')
   ) {
-    return `webpty@ubuntu:${cwd}$ `
+    return `user@ubuntu:${cwd}$ `
   }
 
-  return `${profile.name.replace(/\s+/g, '')} ${cwd}$ `
+  return `[${profile.name.replace(/\s+/g, '')}] ${cwd}$ `
 }
 
 function sessionTitle(session: SessionItem, profile: TerminalProfile) {
