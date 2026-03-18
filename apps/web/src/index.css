@@ -8,8 +8,8 @@
 }
 
 :root {
-  --accent: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent: #0f6cbd;
+  --accent-soft: rgba(15, 108, 189, 0.12);
   --app-bg: #000;
   --app-glow: transparent;
   --window: #000;
@@ -29,7 +29,7 @@
   --line-strong: rgba(17, 17, 17, 0.32);
   --signal: #c48a17;
   --mint: #1d9d58;
-  --shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.18);
+  --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.14);
   --mono:
     'Cascadia Mono', 'Cascadia Code', 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
   --sans: 'Segoe UI Variable', 'Segoe UI', 'Noto Sans KR', sans-serif;

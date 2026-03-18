@@ -37,6 +37,8 @@ export interface TerminalTheme {
   window?: {
     applicationTheme?: 'system' | 'dark' | 'light'
     useMica?: boolean
+    frame?: string
+    unfocusedFrame?: string
   }
   tab?: {
     background?: string

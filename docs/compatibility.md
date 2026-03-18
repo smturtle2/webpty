@@ -23,6 +23,8 @@ Theme fields:
 
 - `window.applicationTheme`
 - `window.useMica`
+- `window.frame`
+- `window.unfocusedFrame`
 - `tab.background`
 - `tab.unfocusedBackground`
 - `tab.showCloseButton` including `activeOnly`
@@ -71,8 +73,9 @@ Action fields currently mapped by the frontend:
 - disk loading accepts JSONC-style comments and trailing commas
 - the in-app `settings.json` editor also accepts JSONC-style comments and trailing commas
 - the in-app settings workspace opens as its own tab from the rail rather than overlaying the shell
-- the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
-- the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
+- the in-app Appearance Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
+- the in-app Profiles Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
+- the in-app Appearance and Profiles studios expose direct text editing plus color-picker controls for chrome and shell colors
 - `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused

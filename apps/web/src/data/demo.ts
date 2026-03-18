@@ -11,6 +11,8 @@ export const demoSettings: TerminalSettings = {
       window: {
         applicationTheme: 'dark',
         useMica: false,
+        frame: '#d8d8d8',
+        unfocusedFrame: '#cfcfcf',
       },
       tab: {
         background: '#ffffff',
@@ -26,6 +28,8 @@ export const demoSettings: TerminalSettings = {
       name: 'Mist',
       window: {
         applicationTheme: 'dark',
+        frame: '#d4d4d4',
+        unfocusedFrame: '#cacaca',
       },
       tab: {
         background: '#ffffff',
@@ -41,6 +45,8 @@ export const demoSettings: TerminalSettings = {
       name: 'Slate',
       window: {
         applicationTheme: 'dark',
+        frame: '#cdcdcd',
+        unfocusedFrame: '#c2c2c2',
       },
       tab: {
         background: '#ffffff',
@@ -69,7 +75,7 @@ export const demoSettings: TerminalSettings = {
       },
       lineHeight: 1.22,
       cursorShape: 'bar',
-      opacity: 92,
+      opacity: 100,
     },
     list: [
       {

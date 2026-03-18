@@ -392,6 +392,10 @@ struct TerminalWindowTheme {
     application_theme: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     use_mica: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frame: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    unfocused_frame: Option<String>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -2229,6 +2233,8 @@ fn default_settings() -> TerminalSettings {
                 window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: Some(false),
+                    frame: Some("#d8d8d8".to_string()),
+                    unfocused_frame: Some("#cfcfcf".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab: Some(TerminalTabTheme {
@@ -2249,6 +2255,8 @@ fn default_settings() -> TerminalSettings {
                 window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: Some(false),
+                    frame: Some("#d4d4d4".to_string()),
+                    unfocused_frame: Some("#cacaca".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab: Some(TerminalTabTheme {
@@ -2269,6 +2277,8 @@ fn default_settings() -> TerminalSettings {
                 window: Some(TerminalWindowTheme {
                     application_theme: Some("dark".to_string()),
                     use_mica: None,
+                    frame: Some("#cdcdcd".to_string()),
+                    unfocused_frame: Some("#c2c2c2".to_string()),
                     extra: JsonMap::new(),
                 }),
                 tab: Some(TerminalTabTheme {

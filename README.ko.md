@@ -36,10 +36,12 @@
 - `webpty up --funnel` 외부 접속용 Tailscale Funnel
 - 상단 툴바 없이 검은 터미널 스테이지가 중심인 레이아웃
 - show/hide 가능한 우측 세션 레일
-- 흰색 플랫 탭과 별도 설정 워크스페이스 탭
-- `themes[]`와 `theme`를 바로 다루는 Theme Studio
-- `profiles.list[]`, 기본 프로필, 폰트/셸 필드를 바로 다루는 Profile Studio
+- 더 조밀한 Windows 11 스타일 레일 밀도, 흰색 플랫 탭, 별도 설정 워크스페이스 탭
+- `themes[]`, `theme`, 프레임 색상, 셸 크롬을 바로 다루는 Appearance Studio
+- `profiles.list[]`, 기본 프로필, 프롬프트, 폰트, 셸 필드를 바로 다루는 Profiles Studio
 - profile/theme 항목 생성·복제·삭제용 인앱 UI
+- 탭, 프레임, 셸, 커서, 선택 영역 색상을 위한 인앱 color picker
+- 프롬프트, 탭 강조색, 셸 색을 즉시 확인할 수 있는 프로필 미리보기
 - schema 호환 `settings.json` 로드, 정규화, 저장, 미지원 키 round-trip 보존
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
@@ -170,6 +172,7 @@ Rust runtime
 
 ## 문서
 
+- [Implementation audit](./docs/implementation-audit.md)
 - [Compatibility notes](./docs/compatibility.md)
 - [Research spec](./docs/research-spec.md)
 - [Runtime contracts](./docs/runtime-contracts.md)

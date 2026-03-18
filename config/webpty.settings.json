@@ -8,7 +8,9 @@
       "name": "Classic",
       "window": {
         "applicationTheme": "dark",
-        "useMica": false
+        "useMica": false,
+        "frame": "#d8d8d8",
+        "unfocusedFrame": "#cfcfcf"
       },
       "tab": {
         "background": "#ffffff",
@@ -24,7 +26,9 @@
       "name": "Mist",
       "window": {
         "applicationTheme": "dark",
-        "useMica": false
+        "useMica": false,
+        "frame": "#d4d4d4",
+        "unfocusedFrame": "#cacaca"
       },
       "tab": {
         "background": "#ffffff",
@@ -40,7 +44,9 @@
       "name": "Slate",
       "window": {
         "applicationTheme": "dark",
-        "useMica": false
+        "useMica": false,
+        "frame": "#cdcdcd",
+        "unfocusedFrame": "#c2c2c2"
       },
       "tab": {
         "background": "#ffffff",
@@ -94,7 +100,7 @@
       },
       "lineHeight": 1.22,
       "cursorShape": "bar",
-      "opacity": 92.0
+      "opacity": 100.0
     },
     "list": [
       {

@@ -59,11 +59,13 @@ const DEFAULT_ACTION_BINDINGS: ActionBindings = {
   openSettings: ['ctrl+,'],
 }
 
+const EMPTY_THEMES: TerminalTheme[] = []
+
 const RAIL_COLLAPSED_STORAGE_KEY = 'webpty:rail-collapsed'
 const SETTINGS_WORKSPACE_ID = 'workspace-settings'
 const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: string }> = [
-  { id: 'appearance', label: 'Theme Studio', meta: 'Surface, tabs, and shell chrome' },
-  { id: 'profiles', label: 'Profile Studio', meta: 'Shell launch and font behavior' },
+  { id: 'appearance', label: 'Appearance', meta: 'Surface, tabs, and shell chrome' },
+  { id: 'profiles', label: 'Profiles', meta: 'Shell launch, prompt, and font behavior' },
   { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
   { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
 ]
@@ -144,7 +146,7 @@ function App() {
   const profileCatalog = settings.profiles.list.map((profile) =>
     resolveProfile(settings, profileIdentifier(profile)),
   )
-  const themeCatalog = settings.themes ?? []
+  const themeCatalog = settings.themes ?? EMPTY_THEMES
   const selectedProfile =
     profileCatalog.find((profile) => profile.id === selectedProfileId) ?? defaultProfile
   const selectedTheme =
@@ -155,6 +157,7 @@ function App() {
     ({ name: 'Theme' } satisfies TerminalTheme)
   const selectedProfileSchemeName =
     schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? activeScheme.name
+  const profileDraftScheme = resolveDraftScheme(settings, profileDraft, uiAppearance)
   const actionBindings = resolveActionBindings(settings.actions)
   const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
@@ -926,7 +929,7 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Theme studio</strong>
+                  <strong>Appearance</strong>
                   <p>
                     Keep the shell black, the tab surfaces white, and the chrome flat while
                     editing the shared theme payload directly.
@@ -1006,7 +1009,7 @@ function App() {
                         />
                         <div className="studio-list-copy">
                           <strong>{theme.name}</strong>
-                          <span>{isApplied ? 'active shell theme' : 'saved theme'}</span>
+                          <span>{isApplied ? 'active appearance' : 'saved appearance'}</span>
                         </div>
                       </button>
                     )
@@ -1022,7 +1025,17 @@ function App() {
                     </p>
                   </div>
 
-                  <div className="theme-preview" aria-hidden="true">
+                  <div
+                    className="theme-preview"
+                    aria-hidden="true"
+                    style={
+                      {
+                        '--theme-preview-frame': themeDraft.window?.frame ?? '#d8d8d8',
+                        '--theme-preview-unfocused-frame':
+                          themeDraft.window?.unfocusedFrame ?? '#cfcfcf',
+                      } as CSSProperties
+                    }
+                  >
                     <div
                       className="theme-preview-strip"
                       style={{ background: themeDraft.tabRow?.background ?? '#efefef' }}
@@ -1049,12 +1062,12 @@ function App() {
                         color: activeScheme.foreground,
                       }}
                     >
-                      {themeDraft.window?.applicationTheme ?? 'system'} shell
+                      {promptPrefixForProfile(activeProfile, activeSession.cwd)}npm run build
                     </div>
                   </div>
 
-                  <div className="field-grid">
-                    <label className="field-row">
+                  <div className="field-grid field-grid-wide">
+                    <label className="field-row field-row-span">
                       <span>Theme name</span>
                       <input
                         className="field-input"
@@ -1083,55 +1096,57 @@ function App() {
                       </select>
                     </label>
 
-                    <label className="field-row">
-                      <span>Active tab</span>
-                      <input
-                        className="field-input"
-                        value={themeDraft.tab?.background ?? ''}
-                        placeholder="#ffffff"
-                        onChange={(event) => patchThemeTab({ background: event.target.value })}
-                      />
-                    </label>
+                    <ColorField
+                      label="Active frame"
+                      value={themeDraft.window?.frame}
+                      fallback="#d8d8d8"
+                      onChange={(nextColor) => patchThemeWindow({ frame: nextColor })}
+                    />
 
-                    <label className="field-row">
-                      <span>Inactive tab</span>
-                      <input
-                        className="field-input"
-                        value={themeDraft.tab?.unfocusedBackground ?? ''}
-                        placeholder="#f4f4f4"
-                        onChange={(event) =>
-                          patchThemeTab({ unfocusedBackground: event.target.value })
-                        }
-                      />
-                    </label>
+                    <ColorField
+                      label="Inactive frame"
+                      value={themeDraft.window?.unfocusedFrame}
+                      fallback="#cfcfcf"
+                      onChange={(nextColor) =>
+                        patchThemeWindow({ unfocusedFrame: nextColor })
+                      }
+                    />
 
-                    <label className="field-row">
-                      <span>Tab strip</span>
-                      <input
-                        className="field-input"
-                        value={themeDraft.tabRow?.background ?? ''}
-                        placeholder="#efefef"
-                        onChange={(event) =>
-                          patchThemeTabRow({ background: event.target.value })
-                        }
-                      />
-                    </label>
+                    <ColorField
+                      label="Active tab"
+                      value={themeDraft.tab?.background}
+                      fallback="#ffffff"
+                      onChange={(nextColor) => patchThemeTab({ background: nextColor })}
+                    />
 
-                    <label className="field-row">
-                      <span>Strip inactive</span>
-                      <input
-                        className="field-input"
-                        value={themeDraft.tabRow?.unfocusedBackground ?? ''}
-                        placeholder="#e7e7e7"
-                        onChange={(event) =>
-                          patchThemeTabRow({
-                            unfocusedBackground: event.target.value,
-                          })
-                        }
-                      />
-                    </label>
+                    <ColorField
+                      label="Inactive tab"
+                      value={themeDraft.tab?.unfocusedBackground}
+                      fallback="#f4f4f4"
+                      onChange={(nextColor) =>
+                        patchThemeTab({ unfocusedBackground: nextColor })
+                      }
+                    />
 
-                    <label className="field-row">
+                    <ColorField
+                      label="Tab strip"
+                      value={themeDraft.tabRow?.background}
+                      fallback="#efefef"
+                      onChange={(nextColor) => patchThemeTabRow({ background: nextColor })}
+                    />
+
+                    <ColorField
+                      label="Strip inactive"
+                      value={themeDraft.tabRow?.unfocusedBackground}
+                      fallback="#e7e7e7"
+                      onChange={(nextColor) =>
+                        patchThemeTabRow({
+                          unfocusedBackground: nextColor,
+                        })
+                      }
+                    />
+
+                    <label className="field-row field-row-span">
                       <span>Close button</span>
                       <select
                         className="field-input"
@@ -1197,7 +1212,7 @@ function App() {
             <section className="drawer-panel">
               <div className="section-heading section-heading-with-actions">
                 <div>
-                  <strong>Profile studio</strong>
+                  <strong>Profiles</strong>
                   <p>
                     Edit launch command, prompt-facing metadata, and terminal font behavior
                     without leaving the shell.
@@ -1266,6 +1281,79 @@ function App() {
                     </p>
                   </div>
 
+                  <section className="profile-preview" aria-label="Profile preview">
+                    <div className="profile-preview-header">
+                      <div className="profile-preview-identity">
+                        <ProfileGlyph profile={profileDraft} />
+                        <div className="profile-preview-copy">
+                          <strong>{profileDraft.name}</strong>
+                          <span>{profileDraft.commandline ?? 'default shell'}</span>
+                        </div>
+                      </div>
+                      <span className="profile-badge">
+                        {profileDraft.hidden
+                          ? 'hidden'
+                          : selectedProfileId === defaultProfile.id
+                            ? 'default'
+                            : 'ready'}
+                      </span>
+                    </div>
+
+                    <div
+                      className="profile-preview-terminal"
+                      style={{
+                        background: profileDraft.background ?? profileDraftScheme.background,
+                        color: profileDraft.foreground ?? profileDraftScheme.foreground,
+                      }}
+                    >
+                      <span>
+                        {promptPrefixForProfile(
+                          profileDraft,
+                          profileDraft.startingDirectory ?? '~',
+                        )}
+                        git status
+                      </span>
+                      <span>On branch main</span>
+                    </div>
+
+                    <div className="profile-preview-swatches" aria-hidden="true">
+                      <span
+                        className="profile-preview-chip"
+                        style={{ '--preview-color': profileDraft.tabColor ?? '#ffffff' } as CSSProperties}
+                      >
+                        tab
+                      </span>
+                      <span
+                        className="profile-preview-chip"
+                        style={{
+                          '--preview-color': profileDraft.foreground ?? profileDraftScheme.foreground,
+                        } as CSSProperties}
+                      >
+                        text
+                      </span>
+                      <span
+                        className="profile-preview-chip"
+                        style={{
+                          '--preview-color':
+                            profileDraft.cursorColor ?? profileDraftScheme.cursorColor ?? '#ffffff',
+                        } as CSSProperties}
+                      >
+                        cursor
+                      </span>
+                      <span
+                        className="profile-preview-chip"
+                        style={{
+                          '--preview-color':
+                            profileDraft.selectionBackground ??
+                            profileDraftScheme.selectionBackground ??
+                            '#264f78',
+                        } as CSSProperties}
+                      >
+                        selection
+                      </span>
+                    </div>
+                  </section>
+
                   <div className="field-grid field-grid-wide">
                     <label className="field-row">
                       <span>Profile name</span>
@@ -1320,15 +1408,12 @@ function App() {
                       />
                     </label>
 
-                    <label className="field-row">
-                      <span>Tab accent</span>
-                      <input
-                        className="field-input"
-                        value={profileDraft.tabColor ?? ''}
-                        placeholder="#3b78ff"
-                        onChange={(event) => patchProfileDraft({ tabColor: event.target.value })}
-                      />
-                    </label>
+                    <ColorField
+                      label="Tab accent"
+                      value={profileDraft.tabColor}
+                      fallback="#3b78ff"
+                      onChange={(nextColor) => patchProfileDraft({ tabColor: nextColor })}
+                    />
 
                     <label className="field-row">
                       <span>Color scheme</span>
@@ -1387,7 +1472,7 @@ function App() {
                     </label>
 
                     <label className="field-row">
-                      <span>Cursor</span>
+                      <span>Cursor shape</span>
                       <select
                         className="field-input"
                         value={profileDraft.cursorShape ?? 'bar'}
@@ -1408,21 +1493,47 @@ function App() {
                       </select>
                     </label>
 
-                    <label className="field-row">
-                      <span>Opacity</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        className="field-input"
-                        value={profileDraft.opacity ?? ''}
-                        onChange={(event) =>
-                          patchProfileDraft({
-                            opacity: readOptionalNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
+                    <RangeField
+                      label="Opacity"
+                      min={0}
+                      max={100}
+                      value={profileDraft.opacity ?? 100}
+                      onChange={(nextValue) =>
+                        patchProfileDraft({
+                          opacity: nextValue,
+                        })
+                      }
+                    />
+
+                    <ColorField
+                      label="Shell background"
+                      value={profileDraft.background}
+                      fallback={profileDraftScheme.background}
+                      onChange={(nextColor) => patchProfileDraft({ background: nextColor })}
+                    />
+
+                    <ColorField
+                      label="Shell text"
+                      value={profileDraft.foreground}
+                      fallback={profileDraftScheme.foreground}
+                      onChange={(nextColor) => patchProfileDraft({ foreground: nextColor })}
+                    />
+
+                    <ColorField
+                      label="Cursor"
+                      value={profileDraft.cursorColor}
+                      fallback={profileDraftScheme.cursorColor ?? '#ffffff'}
+                      onChange={(nextColor) => patchProfileDraft({ cursorColor: nextColor })}
+                    />
+
+                    <ColorField
+                      label="Selection"
+                      value={profileDraft.selectionBackground}
+                      fallback={profileDraftScheme.selectionBackground ?? '#264f78'}
+                      onChange={(nextColor) =>
+                        patchProfileDraft({ selectionBackground: nextColor })
+                      }
+                    />
 
                     <label className="field-row field-row-toggle">
                       <span>Acrylic blur</span>
@@ -1720,6 +1831,96 @@ function App() {
   )
 }
 
+interface ColorFieldProps {
+  label: string
+  value: string | undefined
+  fallback: string
+  onChange: (nextColor: string) => void
+  tokens?: readonly string[]
+}
+
+function ColorField({ label, value, fallback, onChange, tokens = [] }: ColorFieldProps) {
+  const swatchValue = resolveColorInputValue(value, fallback)
+
+  return (
+    <label className="field-row color-field">
+      <span>{label}</span>
+      <div className="color-input-row">
+        <input
+          className="field-input"
+          value={value ?? ''}
+          placeholder={fallback}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <div className="field-color-shell">
+          <span
+            className="field-color-chip"
+            style={{ '--field-color': swatchValue } as CSSProperties}
+            aria-hidden="true"
+          />
+          <input
+            type="color"
+            className="field-color"
+            value={swatchValue}
+            aria-label={`${label} color picker`}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </div>
+      </div>
+      {tokens.length > 0 ? (
+        <div className="field-token-row">
+          {tokens.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={`field-token ${value === token ? 'is-active' : ''}`}
+              onClick={() => onChange(token)}
+            >
+              {token}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </label>
+  )
+}
+
+interface RangeFieldProps {
+  label: string
+  min: number
+  max: number
+  value: number
+  onChange: (nextValue: number) => void
+}
+
+function RangeField({ label, min, max, value, onChange }: RangeFieldProps) {
+  const clamped = Math.min(max, Math.max(min, Number.isFinite(value) ? value : max))
+
+  return (
+    <label className="field-row">
+      <span>{label}</span>
+      <div className="range-input-row">
+        <input
+          type="range"
+          className="field-range"
+          min={min}
+          max={max}
+          value={clamped}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          className="field-input field-input-compact"
+          value={clamped}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+      </div>
+    </label>
+  )
+}
+
 function normalizeHealth(payload: unknown): ServerHealth {
   if (!isRecord(payload)) {
     return demoHealth
@@ -1773,6 +1974,8 @@ function normalizeSettings(payload: unknown): TerminalSettings {
                       ? theme.window.applicationTheme
                       : undefined,
                   useMica: asOptionalBoolean(theme.window.useMica),
+                  frame: asOptionalString(theme.window.frame),
+                  unfocusedFrame: asOptionalString(theme.window.unfocusedFrame),
                 }
               : undefined,
             tab: isRecord(theme.tab)
@@ -2448,6 +2651,8 @@ function createThemeDraft(existingThemes: TerminalTheme[]): TerminalTheme {
     window: {
       applicationTheme: 'dark',
       useMica: false,
+      frame: '#d8d8d8',
+      unfocusedFrame: '#cfcfcf',
     },
     tab: {
       background: '#ffffff',
@@ -2497,7 +2702,8 @@ function removeThemeDocument(
 
 function createProfileDraft(existingProfiles: ResolvedProfile[]): TerminalProfile {
   const template = existingProfiles[0] ?? resolveProfile(demoSettings, demoSettings.defaultProfile)
-  const { id: _id, ...draft } = cloneJson(template)
+  const { id, ...draft } = cloneJson(template)
+  void id
 
   return {
     ...draft,
@@ -2514,7 +2720,8 @@ function duplicateProfileDraft(
   source: TerminalProfile,
   existingProfiles: ResolvedProfile[],
 ): TerminalProfile {
-  const { id: _id, ...draft } = cloneJson(source)
+  const { id, ...draft } = cloneJson(source)
+  void id
 
   return {
     ...draft,
@@ -2568,6 +2775,8 @@ function serializeThemeRecord(existing: unknown, draft: TerminalTheme) {
   assignNestedRecord(nextTheme, 'window', {
     applicationTheme: draft.window?.applicationTheme,
     useMica: draft.window?.useMica,
+    frame: draft.window?.frame,
+    unfocusedFrame: draft.window?.unfocusedFrame,
   })
   assignNestedRecord(nextTheme, 'tab', {
     background: draft.tab?.background,
@@ -3053,6 +3262,32 @@ function sessionTitle(session: SessionItem, profile: TerminalProfile) {
   return profile.tabTitle ?? session.title
 }
 
+function resolveDraftScheme(
+  settings: TerminalSettings,
+  profile: TerminalProfile,
+  appearance: 'dark' | 'light',
+) {
+  const defaults = settings.profiles.defaults ?? {}
+  const mergedFont =
+    defaults.font || profile.font
+      ? {
+          ...(defaults.font ?? {}),
+          ...(profile.font ?? {}),
+        }
+      : undefined
+
+  return resolveScheme(
+    settings,
+    {
+      ...defaults,
+      ...profile,
+      font: mergedFont,
+      id: profileIdentifier(profile),
+    },
+    appearance,
+  )
+}
+
 function resolveProfileIconSource(icon: string | undefined) {
   if (!icon) {
     return null
@@ -3093,6 +3328,26 @@ function applyColorOpacity(value: string, opacity = 100) {
   )})`
 }
 
+function resolveColorInputValue(value: string | undefined, fallback: string) {
+  const candidate = normalizeHexColor(value) ?? normalizeHexColor(fallback)
+  return candidate ?? '#000000'
+}
+
+function normalizeHexColor(value: string | undefined) {
+  if (!value) {
+    return null
+  }
+
+  const normalized = value.trim()
+  const parsed = parseHexColor(normalized)
+
+  if (!parsed) {
+    return null
+  }
+
+  return `#${toHexChannel(parsed.r)}${toHexChannel(parsed.g)}${toHexChannel(parsed.b)}`
+}
+
 function parseHexColor(value: string) {
   const normalized = value.trim()
 
@@ -3119,6 +3374,10 @@ function parseHexColor(value: string) {
     g: Number.parseInt(hex.slice(2, 4), 16),
     b: Number.parseInt(hex.slice(4, 6), 16),
   }
+}
+
+function toHexChannel(value: number) {
+  return value.toString(16).padStart(2, '0')
 }
 
 function resolveAppearance(): 'dark' | 'light' {
