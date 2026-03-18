@@ -1,7 +1,6 @@
 import {
   startTransition,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -421,7 +420,7 @@ function App() {
     }
   }
 
-  const runShortcut = useEffectEvent((event: KeyboardEvent) => {
+  function handleShortcut(event: KeyboardEvent) {
     if (event.key === 'Escape' && isSettingsOpen) {
       event.preventDefault()
       setIsSettingsOpen(false)
@@ -464,23 +463,15 @@ function App() {
     }
 
     return false
-  })
-
-  function handleShortcut(event: KeyboardEvent) {
-    return runShortcut(event)
   }
 
-  const handleWindowKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    handleShortcut(event)
-  })
-
   useEffect(() => {
-    window.addEventListener('keydown', handleWindowKeyDown)
+    window.addEventListener('keydown', handleShortcut)
 
     return () => {
-      window.removeEventListener('keydown', handleWindowKeyDown)
+      window.removeEventListener('keydown', handleShortcut)
     }
-  }, [])
+  })
 
   async function commitSettings(nextDocument: Record<string, unknown>, persist: boolean) {
     setSettingsError(null)
