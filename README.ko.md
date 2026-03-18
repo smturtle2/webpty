@@ -83,7 +83,7 @@ python -m playwright install chromium
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
-현재 워크스페이스 구조에서 레포 루트 기준 글로벌 설치가 가능합니다.
+이 경로가 지원되는 원커맨드 글로벌 설치 방식입니다.
 
 설치 뒤 `webpty`가 보이지 않으면 Cargo bin 디렉터리
 (`$HOME/.cargo/bin`)를 `PATH`에 추가하세요.
@@ -93,6 +93,9 @@ cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```bash
 cargo install --path apps/server --bin webpty --locked
 ```
+
+레포 루트는 virtual Cargo workspace manifest이므로, 로컬 `--path` 설치는
+`apps/server`를 대상으로 해야 합니다.
 
 ### 실행
 
@@ -121,8 +124,8 @@ webpty up --funnel
 지원되는 호스트에서 CLI가 없으면 `webpty`가 먼저 설치를 시도하고, 그 다음
 `tailscale up`을 자동으로 실행한 뒤 Funnel을 붙입니다. 헤드리스 환경에서는
 `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, `TS_AUTH_KEY`도 사용할 수 있습니다.
-여전히 대화형 로그인이 필요하면 `webpty`가 Tailscale 로그인 URL을 출력하고
-정상적으로 종료합니다. Funnel은 셸 화면 자체를 외부에 공개하므로, 신뢰 가능한
+여전히 대화형 로그인이 필요하거나 부트스트랩이 실패하면 `webpty`가 이유를 출력하고
+로컬 셸은 계속 실행합니다. Funnel은 셸 화면 자체를 외부에 공개하므로, 신뢰 가능한
 장비와 네트워크 정책 뒤에서만 사용하는 것이 좋습니다.
 `--funnel` 사용 시 `--host`는 loopback 또는 all-interface 범위로 유지해야 하며 `::1`도 허용됩니다.
 

@@ -82,7 +82,7 @@ python -m playwright install chromium
 cargo install --git https://github.com/smturtle2/webpty --bin webpty --locked
 ```
 
-The workspace layout is installable directly from the repository root.
+That is the supported one-command global install path.
 
 If `webpty` is not found after install, add Cargo's bin directory to `PATH`
 (`$HOME/.cargo/bin` on Linux/macOS).
@@ -92,6 +92,9 @@ Local checkout install:
 ```bash
 cargo install --path apps/server --bin webpty --locked
 ```
+
+The repository root is a virtual Cargo workspace, so local `--path` installs
+target `apps/server`.
 
 ### Run
 
@@ -121,7 +124,7 @@ local CLI is missing on a supported host, `webpty` first attempts to install it,
 then runs `tailscale up` automatically before allocating Funnel. For headless bootstrap flows, `webpty` also honors
 `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY`.
 If interactive login is still required, `webpty` prints the Tailscale auth URL
-and exits cleanly. Treat Funnel as public exposure of the shell surface and only
+or bootstrap error and keeps the local shell running. Treat Funnel as public exposure of the shell surface and only
 use it behind a trusted machine and network policy.
 Keep `--host` on loopback or all interfaces when using `--funnel`; `::1` is also accepted.
 

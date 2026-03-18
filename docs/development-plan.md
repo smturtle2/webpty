@@ -13,27 +13,30 @@ Confirmed in the current tree:
 
 Concrete gaps found during the survey:
 
-1. the docs smoke path was broken because `npm run ui:smoke` passed `--check-only` to a script that did not support it
-2. docs screenshot prerequisites were not documented, so a fresh contributor could not reproduce `docs/assets` reliably
-3. the settings workspace styling still felt like a custom card UI instead of a tighter desktop shell settings surface
-4. settings compatibility remains a supported subset rather than full semantic parity
-5. prompt-template persistence still relies on a `webpty` extension field, which is a deliberate compatibility exception
-6. default themes, actions, and schemes are still mostly shared across hosts even though the profile catalog is host-aware
+1. `App.css` had drifted into stacked legacy overrides, which made shell-chrome fidelity brittle
+2. the right rail was thin but effectively icon-only because compact tab labels were hidden
+3. localization extension still depended on one monolithic locale file instead of per-locale modules
+4. `webpty up --funnel` could abort the whole app when Funnel bootstrap failed
+5. the docs still implied local `cargo install --path .` support even though the repo root is a virtual workspace manifest
+6. settings compatibility remains a supported subset rather than full semantic parity
 
 ## Execution Order
 
 ### Completed in this pass
 
-- repair the docs smoke workflow so screenshot capture can be verified without mutating tracked assets
-- document the Python and Playwright requirements for docs screenshot generation
-- refine the shell chrome styling so the right rail and settings workspace move closer to the desktop shell target
-- refresh README guidance and screenshots after validation
+- replace the shell/settings stylesheet with one authoritative layout tuned for the terminal-first right-rail shell
+- restore compact tab labels in the thin right rail and harden overflow handling across settings surfaces
+- refactor localization into per-locale modules behind a smaller registry layer
+- make `webpty up --funnel` fall back to local-only access when external exposure cannot be completed
+- correct install and runtime docs so the supported paths match the actual workspace and Funnel behavior
+- extend docs smoke validation with long-label overflow checks before refreshing screenshots
 
 ### Remaining follow-up work
 
 - expand supported action objects beyond the current tab/settings-focused command set
 - reduce the remaining dependency on `webpty` extension fields where compatibility is a hard requirement
 - decide whether host-specific defaults should include theme/action/scheme catalogs instead of only profile catalogs
+- decide whether local checkout install should also be made to work from the repo root instead of only from `apps/server`
 - continue pane-graph, tab-order, and session-restoration work already called out in the audit
 
 ## Validation Gate

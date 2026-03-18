@@ -1070,11 +1070,11 @@ function App() {
                 {saveLabelText}
               </span>
             </div>
-            <span>
+            <span className="drawer-status-context">
               {activeTabLabel}
               {currentTab.paneIds.length > 1 ? ` · ${copy.paneCount(currentTab.paneIds.length)}` : ''}
             </span>
-            <span>{runtimeMessage}</span>
+            <span className="drawer-status-runtime">{runtimeMessage}</span>
           </article>
         </nav>
 
@@ -2233,7 +2233,7 @@ function compactRailLabel(label: string): string {
     }
   }
 
-  return normalized.slice(0, 6).toUpperCase()
+  return normalized.slice(0, 4).toUpperCase()
 }
 
 function hasSameProfileDraft(current: TerminalProfile, next: TerminalProfile) {

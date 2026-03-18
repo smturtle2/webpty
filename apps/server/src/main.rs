@@ -844,7 +844,18 @@ async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
         println!("webpty ready on {}", options.local_origin());
 
         if options.funnel {
-            tunnel = Some(start_funnel(&options.host, options.port).await?);
+            match start_funnel(&options.host, options.port).await {
+                Ok(handle) => {
+                    tunnel = Some(handle);
+                }
+                Err(error) => {
+                    eprintln!("webpty funnel: {error}");
+                    eprintln!(
+                        "webpty funnel: continuing with local-only access at {}",
+                        options.local_origin()
+                    );
+                }
+            }
         }
 
         axum::serve(listener, app)
