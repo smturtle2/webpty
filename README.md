@@ -48,12 +48,18 @@ Implemented:
 - token shortcut chips for shared theme color values such as `accent` and `terminalBackground`
 - live profile preview surface for prompt, tab accent, and shell color verification
 - optional `webpty.prompt` templates with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
+- launchable startup-profile guards so hidden profiles cannot become the default shell accidentally
 - schema-compatible `settings.json` loading, normalization, persistence, and unknown-key round-trip preservation
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel
 - string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
 - runtime-matched profile prompt previews in Profile Studio and theme previews
+- literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
 - per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
+- sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
+- real viewport application for `padding`, explicit `lineHeight`, and `window.useMica`
+- stricter launch cwd validation so file paths do not become session working directories
+- safer Funnel cleanup and broader capability detection during startup and shutdown
 - vertical and horizontal split creation inside the active tab
 - WebSocket input/output streaming and PTY resize handling
 - browser-safe profile icon sources rendered in the rail and settings workspace
@@ -157,6 +163,17 @@ re-embeds updated frontend assets automatically.
 npm run build:web
 cargo test --manifest-path apps/server/Cargo.toml
 cargo check
+```
+
+## Ship Changes
+
+```bash
+git status --short
+npm run build:web
+cargo test --manifest-path apps/server/Cargo.toml
+git add -A
+git commit -m "Refine shell runtime and settings studio"
+git push origin main
 ```
 
 ## Architecture

@@ -1,6 +1,9 @@
 .terminal-app {
   min-height: 100svh;
-  background: var(--app-bg);
+  background-color: var(--app-bg);
+  background-image: var(--app-glow);
+  background-repeat: no-repeat;
+  background-size: cover;
   color: var(--text);
 }
 
@@ -130,7 +133,7 @@
 
 .terminal-viewport .xterm {
   height: 100%;
-  padding: 16px 18px 18px;
+  padding: var(--terminal-padding, 16px 18px 18px);
 }
 
 .terminal-viewport .xterm-viewport,
@@ -1193,11 +1196,11 @@ select.field-input {
 }
 
 .terminal-shell {
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) 30px;
 }
 
 .terminal-shell.is-rail-collapsed {
-  grid-template-columns: minmax(0, 1fr) 10px;
+  grid-template-columns: minmax(0, 1fr) 8px;
 }
 
 .terminal-stage {
@@ -1212,12 +1215,14 @@ select.field-input {
 .settings-workspace {
   padding: 0;
   background: var(--chrome);
+  backdrop-filter: var(--chrome-backdrop);
 }
 
 .drawer-layout {
   grid-template-columns: 228px minmax(0, 1fr);
   gap: 0;
   background: var(--chrome);
+  backdrop-filter: var(--chrome-backdrop);
 }
 
 .drawer-header,
@@ -1238,11 +1243,12 @@ select.field-input {
 
 .drawer-nav {
   gap: 4px;
-  padding: 16px 10px;
+  padding: 14px 10px;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
   background: color-mix(in srgb, var(--chrome) 94%, white 6%);
+  backdrop-filter: var(--chrome-backdrop);
 }
 
 .drawer-nav-item,
@@ -1290,8 +1296,9 @@ select.field-input {
 
 .drawer-panel-stack {
   gap: 16px;
-  padding: 18px 20px;
+  padding: 16px 18px;
   background: var(--chrome);
+  backdrop-filter: var(--chrome-backdrop);
 }
 
 .drawer-panel,
@@ -1304,7 +1311,7 @@ select.field-input {
 
 .drawer-panel {
   gap: 16px;
-  padding: 18px 20px;
+  padding: 16px 18px;
 }
 
 .drawer-section {
@@ -1443,6 +1450,7 @@ select.field-input {
   padding: 16px 18px;
   align-items: flex-start;
   font: 500 12px/1.6 var(--mono);
+  white-space: pre-wrap;
 }
 
 .profile-preview {
@@ -1492,6 +1500,12 @@ select.field-input {
   padding: 14px;
   border-radius: 10px;
   font: 500 12px/1.6 var(--mono);
+  white-space: pre-wrap;
+}
+
+.prompt-preview-label {
+  font: 500 12px/1.5 var(--mono);
+  white-space: pre-wrap;
 }
 
 .profile-preview-swatches {
@@ -1631,23 +1645,55 @@ select.field-input {
   color: var(--terminal-fg);
 }
 
+.workspace-grid-vertical,
+.workspace-grid-horizontal {
+  gap: 1px;
+  background: color-mix(in srgb, var(--terminal-fg) 12%, transparent);
+}
+
+.workspace-grid-vertical .pane-shell,
+.workspace-grid-horizontal .pane-shell,
+.workspace-grid-vertical .pane-shell.is-active,
+.workspace-grid-horizontal .pane-shell.is-active {
+  box-shadow: none;
+}
+
+.pane-frame {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  border: 1px solid transparent;
+}
+
+.workspace-grid-vertical .pane-frame,
+.workspace-grid-horizontal .pane-frame {
+  border-color: color-mix(in srgb, var(--terminal-fg) 10%, transparent);
+}
+
+.pane-shell.is-active .pane-frame {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
 .rail-tab-icon .profile-glyph.is-compact {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   font-size: 7px;
 }
 
 .session-rail {
-  gap: 3px;
-  padding: 4px 0 4px 1px;
+  gap: 2px;
+  padding: 3px 0 3px 1px;
   border-left: 1px solid var(--line);
-  background: var(--tab-strip);
+  background: color-mix(in srgb, var(--tab-strip) 94%, white 6%);
+  backdrop-filter: var(--chrome-backdrop);
 }
 
 .rail-head,
 .rail-footer {
-  gap: 3px;
+  gap: 2px;
 }
 
 .rail-toggle,
@@ -1658,37 +1704,37 @@ select.field-input {
 
 .rail-toggle,
 .rail-action {
-  min-height: 22px;
-  border-radius: 6px;
+  min-height: 20px;
+  border-radius: 5px;
   border-color: var(--line);
   background: color-mix(in srgb, var(--chrome-alt) 88%, var(--tab-strip) 12%);
 }
 
 .rail-tab {
-  min-height: 52px;
-  padding: 6px 0;
+  min-height: 50px;
+  padding: 5px 0 6px;
   border-color: var(--line);
   border-right: 0;
-  border-radius: 8px 0 0 8px;
+  border-radius: 6px 0 0 6px;
   background: var(--tab-inactive);
 }
 
 .rail-tab::before {
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
+  top: 5px;
+  bottom: 5px;
+  width: 1px;
 }
 
 .rail-tab-shell.is-active .rail-tab {
   border-color: var(--line-strong);
   background: var(--tab-active);
-  transform: translateX(-1px);
+  transform: none;
   box-shadow: none;
 }
 
 .rail-tab-status {
-  top: 6px;
-  right: 5px;
+  top: 5px;
+  right: 4px;
   width: 4px;
   height: 4px;
 }
@@ -1700,19 +1746,19 @@ select.field-input {
 .rail-tab-meta {
   right: 4px;
   bottom: 4px;
-  min-width: 12px;
-  height: 12px;
+  min-width: 11px;
+  height: 11px;
   padding: 0 3px;
   background: color-mix(in srgb, var(--accent) 68%, #111 32%);
   color: #fff;
-  font-size: 7px;
+  font-size: 6px;
 }
 
 .rail-tab-close {
   top: 2px;
   left: 2px;
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 999px;
   border-color: var(--line);
   background: var(--chrome-alt);
@@ -1730,7 +1776,7 @@ select.field-input {
 }
 
 .session-rail.is-collapsed .rail-toggle {
-  min-height: 34px;
+  min-height: 36px;
   border-radius: 0;
   border-color: transparent;
   background: transparent;
@@ -1748,11 +1794,11 @@ select.field-input {
 
 @media (max-width: 960px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 32px;
+    grid-template-columns: minmax(0, 1fr) 28px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 10px;
+    grid-template-columns: minmax(0, 1fr) 8px;
   }
 
   .drawer-layout,
@@ -1776,11 +1822,11 @@ select.field-input {
 
 @media (max-width: 640px) {
   .terminal-shell {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: minmax(0, 1fr) 26px;
   }
 
   .terminal-shell.is-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr) 10px;
+    grid-template-columns: minmax(0, 1fr) 8px;
   }
 
   .session-rail {

@@ -80,9 +80,11 @@ Accepted fields:
 Notes:
 
 - requests targeting a `hidden: true` profile return `400`
+- runtime settings normalization keeps `defaultProfile` on a visible launchable profile
 - if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`
 - the runtime does not inject a synthetic startup banner before the shell prompt
 - on non-Windows hosts, platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
+- `cwd` token expansion accepts only directories; existing file paths fall back to the current working directory
 
 Returns:
 
@@ -107,6 +109,7 @@ Connection behavior:
 
 - on connect, the current transcript snapshot is replayed once
 - subsequent PTY output is streamed as deltas
+- preview summaries derived from the transcript strip terminal control sequences before reaching the HTTP API
 
 ### Client messages
 

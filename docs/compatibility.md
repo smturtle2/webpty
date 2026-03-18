@@ -85,10 +85,15 @@ Action fields currently mapped by the frontend:
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
+- `defaultProfile` is normalized to a visible launchable profile during load and in-app editing
 - profile launch uses the configured `commandline` when possible
 - sessions start at the real shell prompt with no synthetic startup banner injected into the transcript
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
-- `~` and `%USERPROFILE%`-style paths are expanded when launching a session
+- session preview lines strip terminal control sequences before they reach the API or the demo fallback
+- `~` and `%USERPROFILE%`-style paths are expanded when launching a session, and the resolved path must be a directory
+- `window.useMica` affects the shell chrome/backdrop treatment in the shipped UI
+- explicit `lineHeight` now wins over nested `font.cellHeight` when both are present
+- `padding` affects the live terminal viewport instead of only round-tripping through settings persistence
 - unsupported keys are preserved when the supported subset is loaded and saved again, including edits initiated from the in-app settings UI
 - nested `font` objects on profiles and profile defaults round-trip through the Rust runtime
 - browser-safe profile icon sources such as `data:`, `http(s)://`, and web-relative paths are rendered in the rail and settings surface

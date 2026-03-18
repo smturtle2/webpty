@@ -1,7 +1,7 @@
 import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
-import { useEffect, useEffectEvent, useRef } from 'react'
+import { useEffect, useEffectEvent, useRef, type CSSProperties } from 'react'
 import type { TerminalColorScheme, TerminalCursorShape } from '../types'
 
 interface TerminalViewportProps {
@@ -12,6 +12,7 @@ interface TerminalViewportProps {
   fontFamily: string
   fontSize: number
   lineHeight: number
+  padding?: string
   opacity?: number
   cursorShape: TerminalCursorShape | undefined
   scheme: TerminalColorScheme
@@ -31,6 +32,7 @@ export function TerminalViewport({
   fontFamily,
   fontSize,
   lineHeight,
+  padding,
   opacity,
   cursorShape,
   scheme,
@@ -187,7 +189,7 @@ export function TerminalViewport({
     term.options.lineHeight = lineHeight
     term.options.cursorStyle = mapCursorShape(cursorShape)
     scheduleSyncSize()
-  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, scheme])
+  }, [cursorShape, fontFamily, fontSize, lineHeight, opacity, padding, scheme])
 
   useEffect(() => {
     if (!active) {
@@ -287,7 +289,13 @@ export function TerminalViewport({
     }
   }, [active])
 
-  return <div ref={hostRef} className="terminal-viewport" />
+  return (
+    <div
+      ref={hostRef}
+      className="terminal-viewport"
+      style={{ '--terminal-padding': padding ?? '16px 18px 18px' } as CSSProperties}
+    />
+  )
 }
 
 function mapCursorShape(shape: TerminalCursorShape | undefined): 'block' | 'bar' | 'underline' {

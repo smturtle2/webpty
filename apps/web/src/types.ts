@@ -160,6 +160,7 @@ export interface UiThemeTokens {
   window: string
   chrome: string
   chromeAlt: string
+  chromeBackdrop: string
   surface: string
   panel: string
   terminalBackground: string

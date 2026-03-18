@@ -150,6 +150,7 @@ export function resolveUiTheme(
   const scheme = resolveScheme(settings, profile, appearance)
   const palette = buildColorReferencePalette(profile, scheme)
   const accent = palette.accent
+  const usesMica = selectedTheme?.window?.useMica === true
   const tabActive = resolveColorReference(selectedTheme?.tab?.background, palette, '#ffffff')
   const tabInactive = resolveColorReference(
     selectedTheme?.tab?.unfocusedBackground ?? selectedTheme?.tabRow?.unfocusedBackground,
@@ -158,19 +159,24 @@ export function resolveUiTheme(
   )
   const tabStrip = resolveColorReference(selectedTheme?.tabRow?.background, palette, '#efefef')
   const frame = resolveColorReference(selectedTheme?.window?.frame, palette, tabStrip)
-  const chrome = tabStrip
-  const chromeAlt = tabActive
-  const panel = mix(tabStrip, tabActive, 0.54)
-  const surface = mix(tabActive, '#ffffff', 0.9)
-  const window = mix(frame, '#ffffff', 0.46)
-  const text = readableText(surface)
+  const chrome = usesMica ? alpha(mix(tabStrip, '#ffffff', 0.2), 0.82) : tabStrip
+  const chromeAlt = usesMica ? alpha(mix(tabActive, '#ffffff', 0.08), 0.9) : tabActive
+  const panelBase = mix(tabStrip, tabActive, 0.54)
+  const panel = usesMica ? alpha(panelBase, 0.82) : panelBase
+  const surfaceBase = mix(tabActive, '#ffffff', 0.9)
+  const surface = usesMica ? alpha(surfaceBase, 0.88) : surfaceBase
+  const window = usesMica ? alpha(mix(frame, '#ffffff', 0.46), 0.74) : mix(frame, '#ffffff', 0.46)
+  const text = readableText(surfaceBase)
 
   return {
-    appBackground: '#000000',
-    backgroundGlow: 'transparent',
+    appBackground: usesMica ? mix(scheme.background, '#050505', 0.68) : '#000000',
+    backgroundGlow: usesMica
+      ? `radial-gradient(circle at 120% 0%, ${alpha(accent, 0.22)} 0, transparent 34%), radial-gradient(circle at -10% 100%, ${alpha(frame, 0.18)} 0, transparent 28%)`
+      : 'transparent',
     window,
     chrome,
     chromeAlt,
+    chromeBackdrop: usesMica ? 'blur(26px) saturate(165%)' : 'none',
     surface,
     panel,
     terminalBackground: scheme.background,
@@ -200,7 +206,47 @@ export function resolveProfileFontSize(profile: ResolvedProfile | TerminalProfil
 }
 
 export function resolveProfileLineHeight(profile: ResolvedProfile | TerminalProfile): number {
-  return profile.font?.cellHeight ?? profile.lineHeight ?? 1.22
+  return profile.lineHeight ?? profile.font?.cellHeight ?? 1.22
+}
+
+export function resolveProfilePadding(
+  profile: ResolvedProfile | TerminalProfile,
+): string | undefined {
+  const value = profile.padding
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? `${Math.max(0, value)}px` : undefined
+  }
+
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalized = value.trim()
+  if (normalized.length === 0) {
+    return undefined
+  }
+
+  const tokens = normalized
+    .split(normalized.includes(',') ? /\s*,\s*/ : /\s+/)
+    .map((token) => normalizePaddingToken(token))
+    .filter((token): token is string => token.length > 0)
+    .slice(0, 4)
+
+  return tokens.length > 0 ? tokens.join(' ') : undefined
+}
+
+function normalizePaddingToken(token: string): string {
+  const normalized = token.trim()
+  if (normalized.length === 0) {
+    return ''
+  }
+
+  if (/^-?\d+(?:\.\d+)?$/.test(normalized)) {
+    return `${Math.max(0, Number(normalized))}px`
+  }
+
+  return normalized
 }
 
 export function buildColorReferencePalette(
@@ -286,9 +332,64 @@ export function resolveColorReference(
 export function buildPreviewLines(transcript: string): string[] {
   return transcript
     .split(/\r?\n/)
-    .map((line) => line.trimEnd())
+    .map(stripTerminalControlSequences)
+    .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .slice(-4)
+}
+
+function stripTerminalControlSequences(line: string): string {
+  let output = ''
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]
+    if (!character) {
+      continue
+    }
+
+    if (character === '\u001b') {
+      const next = line[index + 1]
+
+      if (next === '[') {
+        index += 2
+        while (index < line.length) {
+          const code = line.charCodeAt(index)
+          if (code >= 0x40 && code <= 0x7e) {
+            break
+          }
+          index += 1
+        }
+        continue
+      }
+
+      if (next === ']') {
+        index += 2
+        while (index < line.length) {
+          const oscCharacter = line[index]
+          if (oscCharacter === '\u0007') {
+            break
+          }
+          if (oscCharacter === '\u001b' && line[index + 1] === '\\') {
+            index += 1
+            break
+          }
+          index += 1
+        }
+        continue
+      }
+
+      continue
+    }
+
+    const code = character.charCodeAt(0)
+    if (code < 0x20 || code === 0x7f) {
+      continue
+    }
+
+    output += character
+  }
+
+  return output
 }
 
 export function formatSettingsJson(settings: unknown): string {
@@ -312,12 +413,12 @@ export function sessionLabel(session: SessionItem, activeSessionId: string): str
 }
 
 export function promptPrefixForProfile(profile: TerminalProfile, cwd: string): string {
-  const promptTemplate = profile.promptTemplate?.trim()
+  const promptTemplate = profile.promptTemplate
   const profileName = profile.name.trim()
   const commandline = profile.commandline ?? ''
   const resolvedHostLabel = profileHostLabel(profileName, commandline)
 
-  if (promptTemplate) {
+  if (promptTemplate && promptTemplate.trim().length > 0) {
     return promptTemplate
       .replaceAll('{cwd}', cwd)
       .replaceAll('{user}', 'user')

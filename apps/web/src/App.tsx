@@ -23,6 +23,7 @@ import {
   resolveProfileFontFace,
   resolveProfileFontSize,
   resolveProfileLineHeight,
+  resolveProfilePadding,
   resolveProfile,
   resolveScheme,
   resolveTheme,
@@ -178,11 +179,12 @@ function App() {
     themeCatalog[0] ??
     demoSettings.themes?.[0] ??
     ({ name: 'Theme' } satisfies TerminalTheme)
-  const selectedProfileSchemeName =
-    schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? activeScheme.name
   const profileDraftScheme = resolveDraftScheme(settings, profileDraft, uiAppearance)
+  const selectedProfileSchemeName =
+    schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? profileDraftScheme.name
   const activeColorPalette = buildColorReferencePalette(activeProfile, activeScheme)
   const draftColorPalette = buildColorReferencePalette(profileDraft, profileDraftScheme)
+  const visibleProfileCount = profileCatalog.filter((profile) => !profile.hidden).length
   const actionBindings = resolveActionBindings(settings.actions)
   const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
@@ -668,6 +670,16 @@ function App() {
   }
 
   async function handleProfileDraftSave() {
+    if (profileDraft.hidden && selectedProfileId === defaultProfile.id) {
+      setSettingsError('Choose another startup profile before hiding the current default profile.')
+      return
+    }
+
+    if (profileDraft.hidden && visibleProfileCount <= 1 && !selectedProfile.hidden) {
+      setSettingsError('At least one visible profile must remain available.')
+      return
+    }
+
     const nextProfileId = profileIdentifier(profileDraft)
     const nextDocument = updateProfileDocument(settingsDocument, selectedProfileId, profileDraft)
     await commitSettings(nextDocument, canConnect)
@@ -675,6 +687,11 @@ function App() {
   }
 
   async function handleProfileDraftDefault() {
+    if (profileDraft.hidden) {
+      setSettingsError('Hidden profiles cannot be used as the startup shell.')
+      return
+    }
+
     const nextProfileId = profileIdentifier(profileDraft)
     const nextDocument = {
       ...updateProfileDocument(settingsDocument, selectedProfileId, profileDraft),
@@ -716,6 +733,11 @@ function App() {
   async function handleProfileDelete() {
     if (profileCatalog.length <= 1) {
       setSettingsError('At least one profile must remain available.')
+      return
+    }
+
+    if (visibleProfileCount <= 1 && !selectedProfile.hidden) {
+      setSettingsError('At least one visible profile must remain available.')
       return
     }
 
@@ -895,10 +917,6 @@ function App() {
             onMouseDown={() => activateSession(session.id)}
           >
             <div className="pane-frame" aria-hidden="true" />
-            <div className={`pane-badge ${currentTab.paneIds.length > 1 ? 'is-visible' : ''}`}>
-              <span>{profileBadge(profile)}</span>
-              <small>{sessionTitle(session, profile)}</small>
-            </div>
             <TerminalViewport
               active={isFocusedPane}
               canConnect={canConnect}
@@ -907,6 +925,7 @@ function App() {
               fontFamily={resolveProfileFontFace(profile)}
               fontSize={resolveProfileFontSize(profile)}
               lineHeight={resolveProfileLineHeight(profile)}
+              padding={resolveProfilePadding(profile)}
               onConnectionStateChange={handleConnectionStateChange}
               onShortcut={handleShortcut}
               onTranscriptChange={handleTranscriptChange}
@@ -1121,11 +1140,11 @@ function App() {
                         color: activeScheme.foreground,
                       }}
                     >
-                      {promptPrefixForProfile(
+                      {composePreviewCommand(
                         activeProfile,
                         normalizePromptCwd(activeSession.cwd),
+                        'npm run build',
                       )}
-                      npm run build
                     </div>
                   </div>
 
@@ -1348,7 +1367,7 @@ function App() {
                 <div className="studio-form">
                   <div className="section-heading">
                     <strong>{profileDraft.name}</strong>
-                    <p>
+                    <p className="prompt-preview-label">
                       {promptPrefixForProfile(
                         profileDraft,
                         normalizePromptCwd(profileDraft.startingDirectory ?? '~'),
@@ -1382,11 +1401,11 @@ function App() {
                       }}
                     >
                       <span>
-                        {promptPrefixForProfile(
+                        {composePreviewCommand(
                           profileDraft,
                           normalizePromptCwd(profileDraft.startingDirectory ?? '~'),
+                          'git status',
                         )}
-                        git status
                       </span>
                       <span>On branch main</span>
                     </div>
@@ -1656,6 +1675,7 @@ function App() {
                       <input
                         type="checkbox"
                         checked={profileDraft.hidden ?? false}
+                        disabled={visibleProfileCount <= 1 && !selectedProfile.hidden}
                         onChange={(event) => patchProfileDraft({ hidden: event.target.checked })}
                       />
                     </label>
@@ -1681,6 +1701,7 @@ function App() {
                       type="button"
                       className="toolbar-button ghost"
                       onClick={() => void handleProfileDraftDefault()}
+                      disabled={profileDraft.hidden === true}
                     >
                       Use at startup
                     </button>
@@ -2061,7 +2082,7 @@ function normalizeSettings(payload: unknown): TerminalSettings {
     .map((profile) => normalizeProfile(profile))
     .filter((profile): profile is TerminalProfile => profile !== null)
 
-  return {
+  const normalized: TerminalSettings = {
     $schema: asOptionalString(payload.$schema),
     defaultProfile: asString(
       payload.defaultProfile ?? payload.default_profile,
@@ -2156,6 +2177,8 @@ function normalizeSettings(payload: unknown): TerminalSettings {
           }))
       : demoSettings.schemes,
   }
+
+  return ensureLaunchableDefaultProfile(normalized)
 }
 
 function normalizeSessions(payload: unknown): SessionItem[] {
@@ -2196,6 +2219,18 @@ function normalizeSession(payload: unknown): SessionItem | null {
     lastUsedLabel: asString(payload.lastUsedLabel ?? payload.last_used_label, 'Recent'),
     cwd: asString(payload.cwd, '~'),
     previewLines,
+  }
+}
+
+function ensureLaunchableDefaultProfile(settings: TerminalSettings): TerminalSettings {
+  const launchableProfile =
+    settings.profiles.list.find((profile) => profileIdentifier(profile) === settings.defaultProfile && !profile.hidden) ??
+    settings.profiles.list.find((profile) => !profile.hidden) ??
+    settings.profiles.list[0]
+
+  return {
+    ...settings,
+    defaultProfile: profileIdentifier(launchableProfile),
   }
 }
 
@@ -2518,6 +2553,7 @@ function themeVars(uiTheme: UiThemeTokens) {
     '--window': uiTheme.window,
     '--chrome': uiTheme.chrome,
     '--chrome-alt': uiTheme.chromeAlt,
+    '--chrome-backdrop': uiTheme.chromeBackdrop,
     '--surface': uiTheme.surface,
     '--panel': uiTheme.panel,
     '--terminal-bg': uiTheme.terminalBackground,
@@ -3442,6 +3478,10 @@ function normalizePromptCwd(value: string) {
     .replace(/^%home%/i, '~')
     .replace(/^\/home\/[^/]+/, '~')
     .replace(/^([A-Za-z]:)?\\Users\\[^\\]+/i, '~')
+}
+
+function composePreviewCommand(profile: TerminalProfile, cwd: string, command: string) {
+  return `${promptPrefixForProfile(profile, cwd)}${command}`
 }
 
 function resolveColorInputValue(value: string | undefined, fallback: string) {

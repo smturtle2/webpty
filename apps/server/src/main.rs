@@ -780,25 +780,29 @@ async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
         .fallback(get(static_handler))
         .with_state(state.clone());
 
-    let listener = tokio::net::TcpListener::bind(options.bind_address()).await?;
-    println!("webpty ready on {}", options.local_origin());
+    let mut tunnel = None;
+    let result: Result<(), Box<dyn std::error::Error>> = async {
+        let listener = tokio::net::TcpListener::bind(options.bind_address()).await?;
+        println!("webpty ready on {}", options.local_origin());
 
-    let mut tunnel = if options.funnel {
-        Some(start_funnel(&options.host, options.port).await?)
-    } else {
-        None
-    };
+        if options.funnel {
+            tunnel = Some(start_funnel(&options.host, options.port).await?);
+        }
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+        axum::serve(listener, app)
+            .with_graceful_shutdown(shutdown_signal())
+            .await?;
+
+        Ok(())
+    }
+    .await;
 
     if let Some(tunnel) = tunnel.as_mut() {
         stop_tunnel(tunnel).await;
     }
 
     terminate_all_sessions(&state).await;
-    Ok(())
+    result
 }
 
 async fn shutdown_signal() {
@@ -871,15 +875,7 @@ async fn ensure_tailscale_ready() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    let supports_funnel = status
-        .pointer("/Self/Capabilities")
-        .and_then(JsonValue::as_array)
-        .is_some_and(|capabilities| {
-            capabilities
-                .iter()
-                .filter_map(JsonValue::as_str)
-                .any(|capability| capability == "funnel")
-        });
+    let supports_funnel = status_supports_funnel(&status);
 
     if !supports_funnel {
         return Err("this Tailscale node is missing Funnel capability".into());
@@ -919,28 +915,60 @@ async fn select_funnel_port(target: &str) -> Result<FunnelSelection, Box<dyn std
 
 async fn allowed_funnel_ports() -> Result<Vec<u16>, Box<dyn std::error::Error>> {
     let status = run_tailscale_json(["status", "--json"]).await?;
-    let ports = status
-        .pointer("/Self/Capabilities")
-        .and_then(JsonValue::as_array)
-        .and_then(|capabilities| {
-            capabilities
-                .iter()
-                .filter_map(JsonValue::as_str)
-                .find_map(|capability| {
-                    capability
-                        .split_once("ports=")
-                        .map(|(_, values)| {
-                            values
-                                .split(',')
-                                .filter_map(|value| value.parse::<u16>().ok())
-                                .collect::<Vec<_>>()
-                        })
-                        .filter(|ports| !ports.is_empty())
-                })
-        })
+    let ports = funnel_capability_ports(&status)
         .unwrap_or_else(|| DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS.to_vec());
 
     Ok(ports)
+}
+
+fn status_supports_funnel(status: &JsonValue) -> bool {
+    status
+        .pointer("/Self/CapabilitiesMap/funnel")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(false)
+        || capability_strings(status)
+            .into_iter()
+            .any(capability_mentions_funnel)
+        || funnel_capability_ports(status).is_some()
+}
+
+fn capability_strings<'a>(status: &'a JsonValue) -> Vec<&'a str> {
+    status
+        .pointer("/Self/Capabilities")
+        .and_then(JsonValue::as_array)
+        .map(|capabilities| {
+            capabilities
+                .iter()
+                .filter_map(JsonValue::as_str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn capability_mentions_funnel(capability: &str) -> bool {
+    let normalized = capability.trim().to_ascii_lowercase();
+    normalized == "funnel"
+        || normalized.starts_with("funnel:")
+        || normalized.starts_with("funnel/")
+        || normalized.starts_with("funnel,")
+        || normalized.contains(":funnel")
+        || normalized.contains("/funnel")
+}
+
+fn funnel_capability_ports(status: &JsonValue) -> Option<Vec<u16>> {
+    capability_strings(status)
+        .into_iter()
+        .find_map(|capability| {
+            capability
+                .split_once("ports=")
+                .map(|(_, values)| {
+                    values
+                        .split(',')
+                        .filter_map(|value| value.parse::<u16>().ok())
+                        .collect::<Vec<_>>()
+                })
+                .filter(|ports| !ports.is_empty())
+        })
 }
 
 async fn tailscale_dns_name() -> Result<String, Box<dyn std::error::Error>> {
@@ -1184,11 +1212,17 @@ async fn create_session(
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
     let settings = state.settings.read().await.clone();
-    let profile_id =
-        resolve_requested_profile_id(&settings, payload.profile_id.as_deref()).ok_or((
+    let profile_id = if let Some(requested) = payload.profile_id.as_deref() {
+        resolve_requested_profile_id(&settings, Some(requested)).ok_or((
             StatusCode::BAD_REQUEST,
-            "unknown profileId and no defaultProfile available".to_string(),
-        ))?;
+            format!("profile `{requested}` is not defined in settings"),
+        ))?
+    } else {
+        default_launch_profile_id(&settings).ok_or((
+            StatusCode::BAD_REQUEST,
+            "no launchable profile available".to_string(),
+        ))?
+    };
     let profile = resolve_profile(&settings, &profile_id).cloned().ok_or((
         StatusCode::BAD_REQUEST,
         format!("profile `{profile_id}` is not defined in settings"),
@@ -1454,9 +1488,8 @@ fn normalize_settings(
         settings.schemes = defaults.schemes;
     }
 
-    if resolve_requested_profile_id(&settings, Some(&settings.default_profile)).is_none() {
-        settings.default_profile = profile_key(&settings.profiles.list[0]);
-    }
+    settings.default_profile = default_launch_profile_id(&settings)
+        .ok_or("profiles.list must contain at least one visible profile")?;
 
     Ok(settings)
 }
@@ -1464,9 +1497,8 @@ fn normalize_settings(
 fn seed_sessions(
     settings: &TerminalSettings,
 ) -> Result<HashMap<String, Arc<SessionState>>, String> {
-    let default_profile_id =
-        resolve_requested_profile_id(settings, Some(&settings.default_profile))
-            .unwrap_or_else(|| profile_key(&settings.profiles.list[0]));
+    let default_profile_id = default_launch_profile_id(settings)
+        .unwrap_or_else(|| profile_key(&settings.profiles.list[0]));
 
     let session = spawn_session(
         settings,
@@ -1621,12 +1653,18 @@ fn resolve_launch_cwd(requested: Option<&str>, notes: &mut Vec<String>) -> PathB
     let expanded = expand_path_tokens(raw);
     let candidate = PathBuf::from(&expanded);
 
-    if candidate.exists() {
+    if candidate.is_dir() {
         return candidate;
     }
 
+    let reason = if candidate.exists() {
+        "is not a directory"
+    } else {
+        "is unavailable"
+    };
+
     notes.push(format!(
-        "[webpty] requested cwd `{raw}` is unavailable. Starting in `{}`.",
+        "[webpty] requested cwd `{raw}` {reason}. Starting in `{}`.",
         fallback.display()
     ));
     fallback
@@ -2188,7 +2226,7 @@ fn resolve_requested_profile_id(
     settings: &TerminalSettings,
     requested: Option<&str>,
 ) -> Option<String> {
-    let requested = requested.unwrap_or(&settings.default_profile);
+    let requested = requested?;
 
     settings
         .profiles
@@ -2196,6 +2234,23 @@ fn resolve_requested_profile_id(
         .iter()
         .find(|profile| profile_matches(profile, requested))
         .map(profile_key)
+}
+
+fn default_launch_profile_id(settings: &TerminalSettings) -> Option<String> {
+    resolve_requested_profile_id(settings, Some(&settings.default_profile))
+        .filter(|profile_id| {
+            resolve_profile(settings, profile_id)
+                .map(|profile| !profile.hidden.unwrap_or(false))
+                .unwrap_or(false)
+        })
+        .or_else(|| {
+            settings
+                .profiles
+                .list
+                .iter()
+                .find(|profile| !profile.hidden.unwrap_or(false))
+                .map(profile_key)
+        })
 }
 
 fn resolve_profile<'a>(
@@ -2232,15 +2287,58 @@ fn default_session_title(profile: &TerminalProfile) -> String {
 fn preview_lines(transcript: &str) -> Vec<String> {
     transcript
         .lines()
-        .map(str::trim)
+        .map(strip_terminal_control_sequences)
+        .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
         .rev()
         .take(4)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
         .collect()
+}
+
+fn strip_terminal_control_sequences(input: &str) -> String {
+    let mut output = String::new();
+    let mut characters = input.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        if character == '\u{1b}' {
+            match characters.peek().copied() {
+                Some('[') => {
+                    characters.next();
+                    while let Some(next) = characters.next() {
+                        if ('@'..='~').contains(&next) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    characters.next();
+                    while let Some(next) = characters.next() {
+                        if next == '\u{7}' {
+                            break;
+                        }
+
+                        if next == '\u{1b}' && characters.peek().copied() == Some('\\') {
+                            characters.next();
+                            break;
+                        }
+                    }
+                }
+                Some(_) | None => {}
+            }
+            continue;
+        }
+
+        if character.is_control() {
+            continue;
+        }
+
+        output.push(character);
+    }
+
+    output
 }
 
 fn slugify(value: &str) -> String {
@@ -2781,6 +2879,32 @@ mod tests {
         assert_eq!(profile_prompt(Some(&profile)), "\\u@ops:\\w\\$ ");
     }
 
+    #[test]
+    fn normalize_settings_reassigns_hidden_default_profile() {
+        let mut settings = default_settings();
+        settings.profiles.list[0].hidden = Some(true);
+
+        let normalized = normalize_settings(settings).expect("settings should normalize");
+
+        assert_eq!(
+            normalized.default_profile,
+            profile_key(&normalized.profiles.list[1])
+        );
+    }
+
+    #[test]
+    fn normalize_settings_rejects_all_hidden_profiles() {
+        let mut settings = default_settings();
+        for profile in &mut settings.profiles.list {
+            profile.hidden = Some(true);
+        }
+
+        assert!(
+            normalize_settings(settings).is_err(),
+            "settings with only hidden profiles should fail"
+        );
+    }
+
     #[cfg(not(windows))]
     #[test]
     fn default_settings_path_prefers_env_override() {
@@ -2995,6 +3119,56 @@ mod tests {
             fs::read_to_string(&path).expect("fixture should remain readable"),
             fixture
         );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn preview_lines_strip_terminal_control_sequences() {
+        let transcript = "\u{1b}[?2004hPS ~> \n\u{1b}]0;tab-title\u{7}kubectl get pods\n";
+
+        assert_eq!(
+            preview_lines(transcript),
+            vec!["PS ~>".to_string(), "kubectl get pods".to_string()]
+        );
+    }
+
+    #[test]
+    fn status_supports_funnel_recognizes_multiple_capability_shapes() {
+        let exact = serde_json::json!({
+            "Self": {
+                "Capabilities": ["funnel"]
+            }
+        });
+        let mapped = serde_json::json!({
+            "Self": {
+                "CapabilitiesMap": {
+                    "funnel": true
+                }
+            }
+        });
+        let port_only = serde_json::json!({
+            "Self": {
+                "Capabilities": ["https://tailscale.com/cap/web/funnel?ports=443,8443"]
+            }
+        });
+
+        assert!(status_supports_funnel(&exact));
+        assert!(status_supports_funnel(&mapped));
+        assert!(status_supports_funnel(&port_only));
+        assert_eq!(funnel_capability_ports(&port_only), Some(vec![443, 8443]));
+    }
+
+    #[test]
+    fn resolve_launch_cwd_rejects_file_paths() {
+        let path = env::temp_dir().join(format!("webpty-cwd-{}.txt", Uuid::new_v4()));
+        fs::write(&path, "cwd").expect("fixture should be written");
+
+        let mut notes = Vec::new();
+        let cwd = resolve_launch_cwd(path.to_str(), &mut notes);
+
+        assert_ne!(cwd, path);
+        assert!(notes.iter().any(|note| note.contains("not a directory")));
+
         let _ = fs::remove_file(path);
     }
 }
