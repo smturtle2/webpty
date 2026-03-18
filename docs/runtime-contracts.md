@@ -78,6 +78,9 @@ Accepted fields:
 Notes:
 
 - requests targeting a `hidden: true` profile return `400`
+- if `title` is omitted, the runtime uses the profile `tabTitle` when present,
+  otherwise the profile `name`
+- the runtime does not inject a synthetic startup banner before the shell prompt
 - on non-Windows hosts, Windows-targeted profiles fall back to a local shell
   with a prompt shape that matches the requested profile more closely than a
   raw `bash-5.2$` prompt

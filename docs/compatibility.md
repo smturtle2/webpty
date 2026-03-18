@@ -39,6 +39,7 @@ Profile fields used by the UI/runtime:
 - `source`
 - `hidden`
 - `tabColor`
+- `tabTitle`
 - `colorScheme`
 - `fontFace`
 - `fontSize`
@@ -64,7 +65,9 @@ Action fields currently mapped by the frontend:
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - profile launch uses the WT `commandline` when possible
+- sessions start at the real shell prompt with no synthetic startup banner injected into the transcript
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
+- Windows-targeted profiles on non-Windows hosts use a local equivalent when available, otherwise they fall back to the profile-matched shell prompt
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session
 - unsupported WT keys are preserved when the supported subset is loaded and saved again, including edits initiated from the in-app settings UI
 
