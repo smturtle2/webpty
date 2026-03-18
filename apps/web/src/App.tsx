@@ -1,6 +1,7 @@
 import {
   startTransition,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type CSSProperties,
@@ -11,10 +12,14 @@ import './App.css'
 import { TerminalViewport } from './components/TerminalViewport'
 import { demoHealth, demoSessions, demoSettings } from './data/demo'
 import {
+  COLOR_REFERENCE_TOKENS,
   actionLabel,
+  buildColorReferencePalette,
   buildPreviewLines,
   formatSettingsJson,
   profileIdentifier,
+  promptPrefixForProfile,
+  resolveColorReference,
   resolveProfileFontFace,
   resolveProfileFontSize,
   resolveProfileLineHeight,
@@ -26,6 +31,7 @@ import {
   resolveWindowAppearance,
 } from './lib/terminalProfiles'
 import type {
+  ColorReferencePalette,
   ResolvedProfile,
   ServerHealth,
   SessionItem,
@@ -69,6 +75,23 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSection; label: string; meta: strin
   { id: 'json', label: 'settings.json', meta: 'Compatible JSON editor' },
   { id: 'shortcuts', label: 'Shortcuts', meta: 'Resolved keybindings' },
 ]
+const CHROME_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter(
+  (token) => token !== 'cursorColor' && token !== 'selectionBackground',
+)
+const TAB_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter((token) => token !== 'cursorColor')
+const PROFILE_ACCENT_TOKENS = COLOR_REFERENCE_TOKENS.filter(
+  (token) => token === 'accent' || token === 'terminalBackground' || token === 'selectionBackground',
+)
+const TEXT_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter(
+  (token) => token === 'terminalForeground' || token === 'accent',
+)
+const CURSOR_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter(
+  (token) => token === 'cursorColor' || token === 'terminalForeground' || token === 'accent',
+)
+const SELECTION_COLOR_TOKENS = COLOR_REFERENCE_TOKENS.filter(
+  (token) => token === 'selectionBackground' || token === 'accent' || token === 'terminalBackground',
+)
+const PROMPT_TEMPLATE_TOKENS = ['{cwd}', '{user}', '{host}', '{profile}', '{symbol}'] as const
 
 function App() {
   const [settings, setSettings] = useState<TerminalSettings>(demoSettings)
@@ -158,6 +181,8 @@ function App() {
   const selectedProfileSchemeName =
     schemeSelectionLabel(profileDraft.colorScheme, uiAppearance) ?? activeScheme.name
   const profileDraftScheme = resolveDraftScheme(settings, profileDraft, uiAppearance)
+  const activeColorPalette = buildColorReferencePalette(activeProfile, activeScheme)
+  const draftColorPalette = buildColorReferencePalette(profileDraft, profileDraftScheme)
   const actionBindings = resolveActionBindings(settings.actions)
   const canSplitActiveTab = activeWorkspace === 'terminal' && currentTab.paneIds.length === 1
   const shortcutSummary = [
@@ -592,13 +617,17 @@ function App() {
     return false
   }
 
+  const handleWindowKeydown = useEffectEvent((event: KeyboardEvent) => {
+    handleShortcut(event)
+  })
+
   useEffect(() => {
-    window.addEventListener('keydown', handleShortcut)
+    window.addEventListener('keydown', handleWindowKeydown)
 
     return () => {
-      window.removeEventListener('keydown', handleShortcut)
+      window.removeEventListener('keydown', handleWindowKeydown)
     }
-  })
+  }, [])
 
   async function commitSettings(nextDocument: Record<string, unknown>, persist: boolean) {
     setSettingsError(null)
@@ -791,6 +820,13 @@ function App() {
 
   function patchProfileDraft(patch: Partial<TerminalProfile>) {
     setProfileDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function insertPromptToken(token: string) {
+    setProfileDraft((current) => ({
+      ...current,
+      promptTemplate: `${current.promptTemplate ?? ''}${token}`,
+    }))
   }
 
   function patchProfileFont(patch: Partial<NonNullable<TerminalProfile['font']>>) {
@@ -1030,26 +1066,49 @@ function App() {
                     aria-hidden="true"
                     style={
                       {
-                        '--theme-preview-frame': themeDraft.window?.frame ?? '#d8d8d8',
-                        '--theme-preview-unfocused-frame':
-                          themeDraft.window?.unfocusedFrame ?? '#cfcfcf',
+                        '--theme-preview-frame': resolveColorReference(
+                          themeDraft.window?.frame,
+                          activeColorPalette,
+                          '#d8d8d8',
+                        ),
+                        '--theme-preview-unfocused-frame': resolveColorReference(
+                          themeDraft.window?.unfocusedFrame,
+                          activeColorPalette,
+                          '#cfcfcf',
+                        ),
                       } as CSSProperties
                     }
                   >
                     <div
                       className="theme-preview-strip"
-                      style={{ background: themeDraft.tabRow?.background ?? '#efefef' }}
+                      style={{
+                        background: resolveColorReference(
+                          themeDraft.tabRow?.background,
+                          activeColorPalette,
+                          '#efefef',
+                        ),
+                      }}
                     >
                       <span
                         className="theme-preview-tab is-active"
-                        style={{ background: themeDraft.tab?.background ?? '#ffffff' }}
+                        style={{
+                          background: resolveColorReference(
+                            themeDraft.tab?.background,
+                            activeColorPalette,
+                            '#ffffff',
+                          ),
+                        }}
                       >
                         selected
                       </span>
                       <span
                         className="theme-preview-tab"
                         style={{
-                          background: themeDraft.tab?.unfocusedBackground ?? '#f4f4f4',
+                          background: resolveColorReference(
+                            themeDraft.tab?.unfocusedBackground,
+                            activeColorPalette,
+                            '#f4f4f4',
+                          ),
                         }}
                       >
                         idle
@@ -1062,7 +1121,11 @@ function App() {
                         color: activeScheme.foreground,
                       }}
                     >
-                      {promptPrefixForProfile(activeProfile, activeSession.cwd)}npm run build
+                      {promptPrefixForProfile(
+                        activeProfile,
+                        normalizePromptCwd(activeSession.cwd),
+                      )}
+                      npm run build
                     </div>
                   </div>
 
@@ -1100,50 +1163,62 @@ function App() {
                       label="Active frame"
                       value={themeDraft.window?.frame}
                       fallback="#d8d8d8"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) => patchThemeWindow({ frame: nextColor })}
+                      tokens={CHROME_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Inactive frame"
                       value={themeDraft.window?.unfocusedFrame}
                       fallback="#cfcfcf"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) =>
                         patchThemeWindow({ unfocusedFrame: nextColor })
                       }
+                      tokens={CHROME_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Active tab"
                       value={themeDraft.tab?.background}
                       fallback="#ffffff"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) => patchThemeTab({ background: nextColor })}
+                      tokens={TAB_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Inactive tab"
                       value={themeDraft.tab?.unfocusedBackground}
                       fallback="#f4f4f4"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) =>
                         patchThemeTab({ unfocusedBackground: nextColor })
                       }
+                      tokens={TAB_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Tab strip"
                       value={themeDraft.tabRow?.background}
                       fallback="#efefef"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) => patchThemeTabRow({ background: nextColor })}
+                      tokens={CHROME_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Strip inactive"
                       value={themeDraft.tabRow?.unfocusedBackground}
                       fallback="#e7e7e7"
+                      tokenPalette={activeColorPalette}
                       onChange={(nextColor) =>
                         patchThemeTabRow({
                           unfocusedBackground: nextColor,
                         })
                       }
+                      tokens={CHROME_COLOR_TOKENS}
                     />
 
                     <label className="field-row field-row-span">
@@ -1214,7 +1289,7 @@ function App() {
                 <div>
                   <strong>Profile Studio</strong>
                   <p>
-                    Edit launch command, prompt-facing metadata, and terminal font behavior
+                    Edit launch command, prompt template, and terminal font behavior
                     without leaving the shell.
                   </p>
                 </div>
@@ -1276,7 +1351,7 @@ function App() {
                     <p>
                       {promptPrefixForProfile(
                         profileDraft,
-                        profileDraft.startingDirectory ?? '~',
+                        normalizePromptCwd(profileDraft.startingDirectory ?? '~'),
                       )}
                     </p>
                   </div>
@@ -1302,14 +1377,14 @@ function App() {
                     <div
                       className="profile-preview-terminal"
                       style={{
-                        background: profileDraft.background ?? profileDraftScheme.background,
-                        color: profileDraft.foreground ?? profileDraftScheme.foreground,
+                        background: draftColorPalette.terminalBackground,
+                        color: draftColorPalette.terminalForeground,
                       }}
                     >
                       <span>
                         {promptPrefixForProfile(
                           profileDraft,
-                          profileDraft.startingDirectory ?? '~',
+                          normalizePromptCwd(profileDraft.startingDirectory ?? '~'),
                         )}
                         git status
                       </span>
@@ -1319,35 +1394,25 @@ function App() {
                     <div className="profile-preview-swatches" aria-hidden="true">
                       <span
                         className="profile-preview-chip"
-                        style={{ '--preview-color': profileDraft.tabColor ?? '#ffffff' } as CSSProperties}
+                        style={{ '--preview-color': draftColorPalette.accent } as CSSProperties}
                       >
                         tab
                       </span>
                       <span
                         className="profile-preview-chip"
-                        style={{
-                          '--preview-color': profileDraft.foreground ?? profileDraftScheme.foreground,
-                        } as CSSProperties}
+                        style={{ '--preview-color': draftColorPalette.terminalForeground } as CSSProperties}
                       >
                         text
                       </span>
                       <span
                         className="profile-preview-chip"
-                        style={{
-                          '--preview-color':
-                            profileDraft.cursorColor ?? profileDraftScheme.cursorColor ?? '#ffffff',
-                        } as CSSProperties}
+                        style={{ '--preview-color': draftColorPalette.cursorColor } as CSSProperties}
                       >
                         cursor
                       </span>
                       <span
                         className="profile-preview-chip"
-                        style={{
-                          '--preview-color':
-                            profileDraft.selectionBackground ??
-                            profileDraftScheme.selectionBackground ??
-                            '#264f78',
-                        } as CSSProperties}
+                        style={{ '--preview-color': draftColorPalette.selectionBackground } as CSSProperties}
                       >
                         selection
                       </span>
@@ -1398,6 +1463,36 @@ function App() {
                       />
                     </label>
 
+                    <label className="field-row field-row-span">
+                      <span>Prompt template</span>
+                      <input
+                        className="field-input"
+                        value={profileDraft.promptTemplate ?? ''}
+                        placeholder="{user}@{host}:{cwd}{symbol} "
+                        onChange={(event) =>
+                          patchProfileDraft({ promptTemplate: event.target.value })
+                        }
+                      />
+                      <span className="field-help">
+                        Use tokens to keep the shell prompt profile-aware without falling back to
+                        a generic prefix.
+                      </span>
+                      <div className="field-token-row">
+                        {PROMPT_TEMPLATE_TOKENS.map((token) => (
+                          <button
+                            key={token}
+                            type="button"
+                            className={`field-token ${
+                              (profileDraft.promptTemplate ?? '').includes(token) ? 'is-active' : ''
+                            }`}
+                            onClick={() => insertPromptToken(token)}
+                          >
+                            {token}
+                          </button>
+                        ))}
+                      </div>
+                    </label>
+
                     <label className="field-row">
                       <span>Tab title</span>
                       <input
@@ -1412,7 +1507,9 @@ function App() {
                       label="Tab accent"
                       value={profileDraft.tabColor}
                       fallback="#3b78ff"
+                      tokenPalette={draftColorPalette}
                       onChange={(nextColor) => patchProfileDraft({ tabColor: nextColor })}
+                      tokens={PROFILE_ACCENT_TOKENS}
                     />
 
                     <label className="field-row">
@@ -1509,30 +1606,38 @@ function App() {
                       label="Shell background"
                       value={profileDraft.background}
                       fallback={profileDraftScheme.background}
+                      tokenPalette={draftColorPalette}
                       onChange={(nextColor) => patchProfileDraft({ background: nextColor })}
+                      tokens={CHROME_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Shell text"
                       value={profileDraft.foreground}
                       fallback={profileDraftScheme.foreground}
+                      tokenPalette={draftColorPalette}
                       onChange={(nextColor) => patchProfileDraft({ foreground: nextColor })}
+                      tokens={TEXT_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Cursor"
                       value={profileDraft.cursorColor}
                       fallback={profileDraftScheme.cursorColor ?? '#ffffff'}
+                      tokenPalette={draftColorPalette}
                       onChange={(nextColor) => patchProfileDraft({ cursorColor: nextColor })}
+                      tokens={CURSOR_COLOR_TOKENS}
                     />
 
                     <ColorField
                       label="Selection"
                       value={profileDraft.selectionBackground}
                       fallback={profileDraftScheme.selectionBackground ?? '#264f78'}
+                      tokenPalette={draftColorPalette}
                       onChange={(nextColor) =>
                         patchProfileDraft({ selectionBackground: nextColor })
                       }
+                      tokens={SELECTION_COLOR_TOKENS}
                     />
 
                     <label className="field-row field-row-toggle">
@@ -1837,10 +1942,19 @@ interface ColorFieldProps {
   fallback: string
   onChange: (nextColor: string) => void
   tokens?: readonly string[]
+  tokenPalette?: ColorReferencePalette
 }
 
-function ColorField({ label, value, fallback, onChange, tokens = [] }: ColorFieldProps) {
-  const swatchValue = resolveColorInputValue(value, fallback)
+function ColorField({
+  label,
+  value,
+  fallback,
+  onChange,
+  tokens = [],
+  tokenPalette,
+}: ColorFieldProps) {
+  const previewValue = tokenPalette ? resolveColorReference(value, tokenPalette, fallback) : value
+  const swatchValue = resolveColorInputValue(previewValue, fallback)
 
   return (
     <label className="field-row color-field">
@@ -2090,6 +2204,7 @@ function normalizeProfile(payload: unknown): TerminalProfile | null {
     return null
   }
 
+  const webpty = isRecord(payload.webpty) ? payload.webpty : undefined
   const font = isRecord(payload.font) ? normalizeFont(payload.font) : undefined
 
   return {
@@ -2097,6 +2212,9 @@ function normalizeProfile(payload: unknown): TerminalProfile | null {
     guid: asOptionalString(payload.guid),
     name: asString(payload.name, 'Profile'),
     icon: asOptionalString(payload.icon),
+    promptTemplate: asOptionalString(
+      webpty?.prompt ?? payload.promptTemplate ?? payload.prompt_template,
+    ),
     commandline: asOptionalString(payload.commandline),
     startingDirectory: asOptionalString(payload.startingDirectory ?? payload.starting_directory),
     source: asOptionalString(payload.source),
@@ -2361,6 +2479,7 @@ function createFallbackSession(
   nextSessionIdRef: MutableRefObject<number>,
 ): SessionItem {
   const profile = resolveProfile(settings, profileId)
+  const displayCwd = normalizePromptCwd(cwd)
   const nextNumber = nextSessionIdRef.current
   nextSessionIdRef.current += 1
 
@@ -2371,9 +2490,9 @@ function createFallbackSession(
     status: 'running',
     hasActivity: false,
     lastUsedLabel: 'Now',
-    cwd,
+    cwd: displayCwd,
     previewLines: [
-      `${promptPrefixForProfile(profile, cwd)}webpty --demo`,
+      `${promptPrefixForProfile(profile, displayCwd)}webpty --demo`,
       `profile: ${profile.name}`,
       `commandline: ${profile.commandline ?? 'default shell'}`,
       'local fallback session ready',
@@ -2813,6 +2932,10 @@ function serializeProfileRecord(existing: unknown, draft: TerminalProfile) {
   assignOptional(nextProfile, 'cursorColor', draft.cursorColor)
   assignOptional(nextProfile, 'selectionBackground', draft.selectionBackground)
   assignOptional(nextProfile, 'padding', draft.padding)
+  assignNestedRecord(nextProfile, 'webpty', {
+    prompt: draft.promptTemplate,
+  })
+  delete nextProfile.promptTemplate
 
   if (hasOwnValues(font)) {
     assignNestedRecord(nextProfile, 'font', {
@@ -3238,26 +3361,6 @@ function CodeGlyph() {
   )
 }
 
-function promptPrefixForProfile(profile: TerminalProfile, cwd: string) {
-  const lowerName = profile.name.toLowerCase()
-  const lowerCommand = profile.commandline?.toLowerCase() ?? ''
-
-  if (lowerName.includes('powershell') || lowerCommand.includes('pwsh')) {
-    return `PS ${cwd}> `
-  }
-
-  if (
-    lowerName.includes('ubuntu') ||
-    lowerName.includes('wsl') ||
-    lowerCommand.includes('wsl') ||
-    lowerCommand.includes('bash')
-  ) {
-    return `user@ubuntu:${cwd}$ `
-  }
-
-  return `[${profile.name.replace(/\s+/g, '')}] ${cwd}$ `
-}
-
 function sessionTitle(session: SessionItem, profile: TerminalProfile) {
   return profile.tabTitle ?? session.title
 }
@@ -3326,6 +3429,19 @@ function applyColorOpacity(value: string, opacity = 100) {
   return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${Number(
     (normalizedOpacity / 100).toFixed(3),
   )})`
+}
+
+function normalizePromptCwd(value: string) {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return '~'
+  }
+
+  return trimmed
+    .replace(/^%userprofile%/i, '~')
+    .replace(/^%home%/i, '~')
+    .replace(/^\/home\/[^/]+/, '~')
+    .replace(/^([A-Za-z]:)?\\Users\\[^\\]+/i, '~')
 }
 
 function resolveColorInputValue(value: string | undefined, fallback: string) {

@@ -513,6 +513,15 @@ struct TerminalProfileDefaults {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct WebptyProfileOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    prompt: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
+    extra: JsonMap<String, JsonValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct TerminalProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     guid: Option<String>,
@@ -561,6 +570,8 @@ struct TerminalProfile {
     selection_background: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     padding: Option<StringOrNumber>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    webpty: Option<WebptyProfileOptions>,
     #[serde(flatten, default, skip_serializing_if = "JsonMap::is_empty")]
     extra: JsonMap<String, JsonValue>,
 }
@@ -1869,6 +1880,10 @@ fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
         return "\\w\\$ ".to_string();
     };
 
+    if let Some(prompt) = configured_profile_prompt(profile) {
+        return prompt;
+    }
+
     let profile_name = profile.name.trim();
     let commandline = profile
         .commandline
@@ -1892,6 +1907,32 @@ fn profile_prompt(profile: Option<&TerminalProfile>) -> String {
 
     let label = sanitize_prompt_label(profile_name);
     format!("[{label}] \\w\\$ ")
+}
+
+#[cfg(not(windows))]
+fn configured_profile_prompt(profile: &TerminalProfile) -> Option<String> {
+    let template = profile
+        .webpty
+        .as_ref()
+        .and_then(|options| options.prompt.as_deref())
+        .filter(|prompt| !prompt.trim().is_empty())?;
+
+    let profile_name = profile.name.trim();
+    let commandline = profile.commandline.as_deref().unwrap_or_default();
+    let host_label =
+        profile_host_label(profile_name, commandline).unwrap_or_else(|| "shell".to_string());
+    let sanitized_profile = sanitize_prompt_label(profile_name);
+
+    Some(
+        template
+            .replace("{cwd}", "\\w")
+            .replace("{dir}", "\\W")
+            .replace("{user}", "\\u")
+            .replace("{host}", &host_label)
+            .replace("{profile}", &sanitized_profile)
+            .replace("{name}", profile_name)
+            .replace("{symbol}", "\\$"),
+    )
 }
 
 #[cfg(not(windows))]
@@ -2377,6 +2418,10 @@ fn default_settings() -> TerminalSettings {
                     cursor_color: None,
                     selection_background: None,
                     padding: None,
+                    webpty: Some(WebptyProfileOptions {
+                        prompt: Some("PS {cwd}> ".to_string()),
+                        extra: JsonMap::new(),
+                    }),
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2404,6 +2449,10 @@ fn default_settings() -> TerminalSettings {
                     cursor_color: None,
                     selection_background: None,
                     padding: None,
+                    webpty: Some(WebptyProfileOptions {
+                        prompt: Some("{user}@{host}:{cwd}{symbol} ".to_string()),
+                        extra: JsonMap::new(),
+                    }),
                     extra: JsonMap::new(),
                 },
                 TerminalProfile {
@@ -2434,6 +2483,10 @@ fn default_settings() -> TerminalSettings {
                     cursor_color: None,
                     selection_background: None,
                     padding: None,
+                    webpty: Some(WebptyProfileOptions {
+                        prompt: Some("{user}@{host}:{cwd}{symbol} ".to_string()),
+                        extra: JsonMap::new(),
+                    }),
                     extra: JsonMap::new(),
                 },
             ],
@@ -2554,6 +2607,7 @@ mod tests {
             cursor_color: None,
             selection_background: None,
             padding: None,
+            webpty: None,
             extra: JsonMap::new(),
         };
 
@@ -2588,6 +2642,7 @@ mod tests {
             cursor_color: None,
             selection_background: None,
             padding: None,
+            webpty: None,
             extra: JsonMap::new(),
         };
         let ubuntu = TerminalProfile {
@@ -2615,6 +2670,7 @@ mod tests {
             cursor_color: None,
             selection_background: None,
             padding: None,
+            webpty: None,
             extra: JsonMap::new(),
         };
         let custom = TerminalProfile {
@@ -2642,6 +2698,7 @@ mod tests {
             cursor_color: None,
             selection_background: None,
             padding: None,
+            webpty: None,
             extra: JsonMap::new(),
         };
 
@@ -2679,10 +2736,49 @@ mod tests {
             cursor_color: None,
             selection_background: None,
             padding: None,
+            webpty: None,
             extra: JsonMap::new(),
         };
 
         assert_eq!(profile_prompt(Some(&profile)), "\\u@debian-12:\\w\\$ ");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn profile_prompt_prefers_explicit_webpty_prompt() {
+        let profile = TerminalProfile {
+            guid: None,
+            name: "Ops".to_string(),
+            icon: None,
+            commandline: Some("bash".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            font: None,
+            font_face: None,
+            font_size: None,
+            font_weight: None,
+            cell_height: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
+            webpty: Some(WebptyProfileOptions {
+                prompt: Some("{user}@{host}:{cwd}{symbol} ".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        };
+
+        assert_eq!(profile_prompt(Some(&profile)), "\\u@ops:\\w\\$ ");
     }
 
     #[cfg(not(windows))]
@@ -2835,6 +2931,10 @@ mod tests {
                   "size": 14,
                   "weight": 600
                 },
+                "webpty": {
+                  "prompt": "[ops] \\w\\$ ",
+                  "slot": "keep-nested"
+                },
                 "customProfileFlag": "keep-me"
               }
             ]
@@ -2864,6 +2964,14 @@ mod tests {
         assert_eq!(
             payload.pointer("/profiles/list/0/customProfileFlag"),
             Some(&JsonValue::String("keep-me".to_string()))
+        );
+        assert_eq!(
+            payload.pointer("/profiles/list/0/webpty/prompt"),
+            Some(&JsonValue::String("[ops] \\w\\$ ".to_string()))
+        );
+        assert_eq!(
+            payload.pointer("/profiles/list/0/webpty/slot"),
+            Some(&JsonValue::String("keep-nested".to_string()))
         );
         assert_eq!(
             payload.get("experimentalFeature"),

@@ -51,6 +51,7 @@ Implemented:
 - JSONC-style settings file loading on disk
 - JSONC-style editing in the in-app `settings.json` panel
 - string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
+- runtime-matched profile prompt previews in Profile Studio and theme previews
 - per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
 - vertical and horizontal split creation inside the active tab
 - WebSocket input/output streaming and PTY resize handling

@@ -1,4 +1,5 @@
 import type {
+  ColorReferencePalette,
   ResolvedProfile,
   SessionItem,
   TerminalColorScheme,
@@ -32,6 +33,16 @@ const DEFAULT_SCHEME: TerminalColorScheme = {
   brightCyan: '#61d6d6',
   brightWhite: '#f2f2f2',
 }
+
+export const COLOR_REFERENCE_TOKENS = [
+  'accent',
+  'terminalBackground',
+  'terminalForeground',
+  'cursorColor',
+  'selectionBackground',
+] as const
+
+const COLOR_REFERENCE_TOKEN_SET = new Set<string>(COLOR_REFERENCE_TOKENS)
 
 export function profileIdentifier(profile: TerminalProfile): string {
   return profile.guid ?? profile.id ?? slugify(profile.name)
@@ -119,12 +130,14 @@ export function resolveScheme(
   const resolved =
     settings.schemes?.find((scheme) => scheme.name === selectedName) ?? DEFAULT_SCHEME
 
+  const palette = buildColorReferencePalette(profile, resolved)
+
   return {
     ...resolved,
-    background: profile.background ?? resolved.background,
-    foreground: profile.foreground ?? resolved.foreground,
-    cursorColor: profile.cursorColor ?? resolved.cursorColor,
-    selectionBackground: profile.selectionBackground ?? resolved.selectionBackground,
+    background: palette.terminalBackground,
+    foreground: palette.terminalForeground,
+    cursorColor: palette.cursorColor,
+    selectionBackground: palette.selectionBackground,
   }
 }
 
@@ -135,24 +148,29 @@ export function resolveUiTheme(
 ): UiThemeTokens {
   const selectedTheme = resolveTheme(settings, appearance)
   const scheme = resolveScheme(settings, profile, appearance)
-  const accent = profile.tabColor ?? scheme.brightBlue ?? scheme.blue ?? '#4cc2ff'
-  const tabActive = selectedTheme?.tab?.background ?? '#ffffff'
-  const tabInactive =
-    selectedTheme?.tab?.unfocusedBackground ??
-    selectedTheme?.tabRow?.unfocusedBackground ??
-    '#f3f3f3'
-  const tabStrip = selectedTheme?.tabRow?.background ?? '#efefef'
+  const palette = buildColorReferencePalette(profile, scheme)
+  const accent = palette.accent
+  const tabActive = resolveColorReference(selectedTheme?.tab?.background, palette, '#ffffff')
+  const tabInactive = resolveColorReference(
+    selectedTheme?.tab?.unfocusedBackground ?? selectedTheme?.tabRow?.unfocusedBackground,
+    palette,
+    '#f3f3f3',
+  )
+  const tabStrip = resolveColorReference(selectedTheme?.tabRow?.background, palette, '#efefef')
+  const frame = resolveColorReference(selectedTheme?.window?.frame, palette, tabStrip)
   const chrome = tabStrip
-  const panel = mix(tabActive, '#f6f6f6', 0.58)
-  const window = mix(scheme.background, '#000000', 0.94)
-  const surface = mix(scheme.background, '#000000', 0.88)
+  const chromeAlt = tabActive
+  const panel = mix(tabStrip, tabActive, 0.54)
+  const surface = mix(tabActive, '#ffffff', 0.9)
+  const window = mix(frame, '#ffffff', 0.46)
+  const text = readableText(surface)
 
   return {
     appBackground: '#000000',
     backgroundGlow: 'transparent',
     window,
     chrome,
-    chromeAlt: '#ffffff',
+    chromeAlt,
     surface,
     panel,
     terminalBackground: scheme.background,
@@ -160,11 +178,11 @@ export function resolveUiTheme(
     tabActive,
     tabInactive,
     tabStrip,
-    border: 'rgba(17, 17, 17, 0.11)',
-    borderStrong: 'rgba(17, 17, 17, 0.2)',
-    text: '#111111',
-    textSoft: '#5f5f5f',
-    textMuted: '#7a7a7a',
+    border: alpha(text, 0.12),
+    borderStrong: alpha(text, 0.22),
+    text,
+    textSoft: alpha(text, 0.74),
+    textMuted: alpha(text, 0.54),
     accent,
     accentSoft: alpha(accent, 0.14),
     signal: scheme.yellow ?? accent,
@@ -183,6 +201,86 @@ export function resolveProfileFontSize(profile: ResolvedProfile | TerminalProfil
 
 export function resolveProfileLineHeight(profile: ResolvedProfile | TerminalProfile): number {
   return profile.font?.cellHeight ?? profile.lineHeight ?? 1.22
+}
+
+export function buildColorReferencePalette(
+  profile: ResolvedProfile | TerminalProfile,
+  scheme: TerminalColorScheme,
+): ColorReferencePalette {
+  const accentFallback = scheme.brightBlue ?? scheme.blue ?? '#4cc2ff'
+  const basePalette: ColorReferencePalette = {
+    accent: accentFallback,
+    terminalBackground: scheme.background,
+    terminalForeground: scheme.foreground,
+    cursorColor: scheme.cursorColor ?? scheme.foreground,
+    selectionBackground: scheme.selectionBackground ?? '#264f78',
+  }
+  const accent = resolveColorReference(profile.tabColor, basePalette, accentFallback)
+  const paletteWithAccent = {
+    ...basePalette,
+    accent,
+  }
+  const terminalBackground = resolveColorReference(
+    profile.background,
+    paletteWithAccent,
+    scheme.background,
+  )
+  const terminalForeground = resolveColorReference(
+    profile.foreground,
+    {
+      ...paletteWithAccent,
+      terminalBackground,
+    },
+    scheme.foreground,
+  )
+  const cursorColor = resolveColorReference(
+    profile.cursorColor,
+    {
+      ...paletteWithAccent,
+      terminalBackground,
+      terminalForeground,
+    },
+    scheme.cursorColor ?? terminalForeground,
+  )
+  const selectionBackground = resolveColorReference(
+    profile.selectionBackground,
+    {
+      ...paletteWithAccent,
+      terminalBackground,
+      terminalForeground,
+      cursorColor,
+    },
+    scheme.selectionBackground ?? '#264f78',
+  )
+
+  return {
+    accent,
+    terminalBackground,
+    terminalForeground,
+    cursorColor,
+    selectionBackground,
+  }
+}
+
+export function resolveColorReference(
+  value: string | undefined,
+  palette: ColorReferencePalette,
+  fallback: string,
+): string {
+  if (!value) {
+    return fallback
+  }
+
+  const normalized = value.trim()
+  if (normalized.length === 0) {
+    return fallback
+  }
+
+  if (COLOR_REFERENCE_TOKEN_SET.has(normalized)) {
+    return palette[normalized as keyof ColorReferencePalette]
+  }
+
+  return normalized
 }
 
 export function buildPreviewLines(transcript: string): string[] {
@@ -213,11 +311,210 @@ export function sessionLabel(session: SessionItem, activeSessionId: string): str
   return session.hasActivity ? 'Updated' : session.lastUsedLabel
 }
 
+export function promptPrefixForProfile(profile: TerminalProfile, cwd: string): string {
+  const promptTemplate = profile.promptTemplate?.trim()
+  const profileName = profile.name.trim()
+  const commandline = profile.commandline ?? ''
+  const resolvedHostLabel = profileHostLabel(profileName, commandline)
+
+  if (promptTemplate) {
+    return promptTemplate
+      .replaceAll('{cwd}', cwd)
+      .replaceAll('{user}', 'user')
+      .replaceAll('{host}', resolvedHostLabel ?? 'shell')
+      .replaceAll('{profile}', profile.name)
+      .replaceAll('{name}', profile.name)
+      .replaceAll('{symbol}', '$')
+  }
+
+  const normalizedName = profileName.toLowerCase()
+  const normalizedCommand = commandline.toLowerCase()
+
+  if (normalizedName.includes('powershell') || normalizedCommand.includes('pwsh')) {
+    if (normalizedName === 'powershell') {
+      return `PS ${cwd}> `
+    }
+
+    return `PS(${sanitizePromptLabel(profileName)}) ${cwd}> `
+  }
+
+  if (resolvedHostLabel) {
+    return `user@${resolvedHostLabel}:${cwd}$ `
+  }
+
+  return `[${sanitizePromptLabel(profileName)}] ${cwd}$ `
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
+}
+
+function sanitizePromptLabel(value: string): string {
+  const sanitized = value
+    .split('')
+    .filter(
+      (character) =>
+        /[A-Za-z0-9]/.test(character) || character === '-' || character === '_' || character === '.',
+    )
+    .join('')
+
+  return sanitized.length > 0 ? sanitized : 'webpty'
+}
+
+function profileHostLabel(profileName: string, commandline: string): string | null {
+  const normalizedName = sanitizePromptLabel(profileName.toLowerCase())
+  const normalizedCommand = commandline.toLowerCase()
+  const distribution = wslDistributionLabel(commandline)
+
+  if (distribution) {
+    return distribution
+  }
+
+  if (normalizedName.includes('ubuntu')) {
+    return normalizedName.length > 0 ? normalizedName : 'ubuntu'
+  }
+
+  if (looksPosixShellPrompt(normalizedCommand) || isGenericShellLabel(normalizedName)) {
+    if (normalizedName.length === 0 || isGenericShellLabel(normalizedName)) {
+      return 'shell'
+    }
+
+    return normalizedName
+  }
+
+  return null
+}
+
+function wslDistributionLabel(commandline: string): string | null {
+  const args = parseCommandlineArgs(commandline)
+  if (!args || args.length === 0) {
+    return null
+  }
+
+  const program = programName(args[0])
+  if (program !== 'wsl' && program !== 'wsl.exe') {
+    return null
+  }
+
+  for (let index = 1; index < args.length; index += 1) {
+    const argument = args[index]
+    const lowered = argument.toLowerCase()
+
+    if ((lowered === '-d' || lowered === '--distribution') && args[index + 1]) {
+      const distribution = sanitizePromptLabel(args[index + 1].toLowerCase())
+      return distribution.length > 0 ? distribution : null
+    }
+
+    const split = lowered.split('=')
+    if (split.length === 2 && (split[0] === '-d' || split[0] === '--distribution')) {
+      const distribution = sanitizePromptLabel(split[1])
+      return distribution.length > 0 ? distribution : null
+    }
+  }
+
+  return null
+}
+
+function looksPosixShellPrompt(commandline: string): boolean {
+  if (
+    commandline.includes('bash') ||
+    commandline.includes('zsh') ||
+    commandline.includes('fish') ||
+    commandline.includes('/bin/sh')
+  ) {
+    return true
+  }
+
+  const program = commandProgramName(commandline)
+  return (
+    program === 'bash' ||
+    program === 'bash.exe' ||
+    program === 'sh' ||
+    program === 'zsh' ||
+    program === 'zsh.exe' ||
+    program === 'fish' ||
+    program === 'fish.exe'
+  )
+}
+
+function commandProgramName(commandline: string): string | null {
+  const args = parseCommandlineArgs(commandline)
+  if (!args || args.length === 0) {
+    return null
+  }
+
+  return programName(args[0])
+}
+
+function programName(program: string): string {
+  return program.split(/[\\/]/).at(-1)?.toLowerCase() ?? program.toLowerCase()
+}
+
+function isGenericShellLabel(label: string): boolean {
+  return (
+    label === '' ||
+    label === 'shell' ||
+    label === 'bash' ||
+    label === 'sh' ||
+    label === 'zsh' ||
+    label === 'fish' ||
+    label === 'terminal'
+  )
+}
+
+function parseCommandlineArgs(commandline: string): string[] | null {
+  const trimmed = commandline.trim()
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  const args: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const character = trimmed[index]
+
+    if (quote) {
+      if (character === quote) {
+        quote = null
+      } else if (character === '\\' && index + 1 < trimmed.length && trimmed[index + 1] === quote) {
+        current += quote
+        index += 1
+      } else {
+        current += character
+      }
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+
+    if (/\s/.test(character)) {
+      if (current.length > 0) {
+        args.push(current)
+        current = ''
+      }
+      continue
+    }
+
+    current += character
+  }
+
+  if (quote) {
+    return null
+  }
+
+  if (current.length > 0) {
+    args.push(current)
+  }
+
+  return args.length > 0 ? args : null
 }
 
 function mix(first: string, second: string, ratio: number): string {
@@ -245,6 +542,23 @@ function alpha(value: string, opacity: number): string {
   }
 
   return `rgba(${parsed.r}, ${parsed.g}, ${parsed.b}, ${opacity})`
+}
+
+function readableText(
+  background: string,
+  dark = '#111111',
+  light = '#f6f7fb',
+): string {
+  const parsed = parseHex(background)
+
+  if (!parsed) {
+    return dark
+  }
+
+  const luminance =
+    (0.2126 * parsed.r + 0.7152 * parsed.g + 0.0722 * parsed.b) / 255
+
+  return luminance > 0.58 ? dark : light
 }
 
 function parseHex(value: string): { r: number; g: number; b: number } | null {

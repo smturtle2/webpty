@@ -47,6 +47,7 @@
 - 디스크 기준 JSONC 스타일 설정 파일 로딩
 - 앱 내 `settings.json` 패널에서 JSONC 스타일 편집 지원
 - `{ "command": { "action": "newTab" } }` 같은 문자열/객체형 액션 바인딩 지원
+- Profile Studio와 Theme Studio 미리보기에서 런타임과 같은 프로필별 프롬프트 규칙 반영
 - 비Windows fallback에서도 `bash-5.2$` 대신 프로필별 문구가 드러나는 프롬프트
 - 활성 탭 안에서 수직/수평 split 생성
 - PTY 입력, 리사이즈, 출력 스트림 처리

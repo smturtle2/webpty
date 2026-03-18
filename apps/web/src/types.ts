@@ -93,6 +93,7 @@ export interface TerminalProfile {
   guid?: string
   name: string
   icon?: string
+  promptTemplate?: string
   commandline?: string
   startingDirectory?: string
   source?: string
@@ -176,4 +177,12 @@ export interface UiThemeTokens {
   signal: string
   success: string
   shadow: string
+}
+
+export interface ColorReferencePalette {
+  accent: string
+  terminalBackground: string
+  terminalForeground: string
+  cursorColor: string
+  selectionBackground: string
 }
