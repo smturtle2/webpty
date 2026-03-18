@@ -51,9 +51,10 @@ settings path.
 Default path selection:
 
 - `webpty up --settings <path>` or `WEBPTY_SETTINGS_PATH=<path>`
-- `./config/webpty.settings.json` from the current working directory, if present
 - Linux/macOS: `~/.config/webpty/settings.json`
 - Windows: `%APPDATA%\\webpty\\settings.json`
+
+The repo sample stays opt-in through `webpty up --settings ./config/webpty.settings.json`.
 
 Disk parsing accepts JSONC-style comments and trailing commas.
 
@@ -62,6 +63,11 @@ Disk parsing accepts JSONC-style comments and trailing commas.
 Accepts the same shared JSON subset and persists it back to the active settings
 path. Unsupported keys that travel alongside the supported subset are preserved
 on round-trip.
+
+Notes:
+
+- the payload must keep at least one visible profile
+- `defaultProfile` is normalized onto a visible launchable profile before persistence
 
 ### `GET /api/sessions`
 
@@ -81,9 +87,10 @@ Notes:
 
 - requests targeting a `hidden: true` profile return `400`
 - runtime settings normalization keeps `defaultProfile` on a visible launchable profile
+- runtime settings normalization rejects payloads that hide every profile
 - if `title` is omitted, the runtime uses the profile `tabTitle` when present, otherwise the profile `name`
 - the runtime does not inject a synthetic startup banner before the shell prompt
-- on non-Windows hosts, platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
+- on non-Windows hosts, plain shell profile commandlines are normalized toward prompt-aware interactive launches, and platform fallbacks keep a prompt shape that matches the requested profile more closely than a raw `bash-5.2$` prompt
 - `cwd` token expansion accepts only directories; existing file paths fall back to the current working directory
 
 Returns:
@@ -133,7 +140,8 @@ Connection behavior:
 - the UI can still fall back to demo mode if the backend is unavailable
 - the backend is a real PTY runtime that also serves the production shell bundle
 - profile and theme definitions remain the main source of truth
-- `webpty up --funnel` depends on the local `tailscale` client and an authenticated node with Funnel capability
-- `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit
+- `webpty up --funnel` depends on the local `tailscale` client and a node with Funnel capability, and it first attempts `tailscale up` automatically when the client is offline
+- `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` during automatic bootstrap and otherwise prints the interactive auth URL when login is still required
+- `webpty up --funnel` reuses an existing Funnel mapping for the same local target when possible, otherwise it allocates an allowed HTTPS port and cleans it up on exit, including timeout / SIGTERM-style shutdown paths
 - the settings surfaces open in a dedicated workspace tab instead of overlaying the terminal stage
 - advanced pane graphs, search, and command palette remain future milestones

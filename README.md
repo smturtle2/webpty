@@ -38,6 +38,7 @@ Implemented:
 - embedded production UI served directly by the Rust binary
 - `webpty up` CLI entrypoint for local startup
 - `webpty up --funnel` external access through Tailscale Funnel
+- automatic `tailscale up` bootstrap for `webpty up --funnel`, with login URL handoff when interactive auth is still required
 - black terminal stage with no top toolbar
 - narrow right-side rail with show/hide support
 - tighter Windows 11-aligned rail density with white flat tab surfaces and a dedicated settings workspace tab
@@ -45,6 +46,7 @@ Implemented:
 - dedicated Profile Studio for `profiles.list[]`, default profile, prompt, font, and shell field editing
 - in-app create / duplicate / delete flows for profile and theme entries
 - in-app color pickers for tab, frame, shell, cursor, and selection colors
+- full color value editing in Theme Studio and Profile Studio so hex fields stay readable instead of collapsing to a clipped prefix
 - token shortcut chips for shared theme color values such as `accent` and `terminalBackground`
 - live profile preview surface for prompt, tab accent, and shell color verification
 - optional `webpty.prompt` templates with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
@@ -55,7 +57,8 @@ Implemented:
 - string and object-form action bindings such as `{ "command": { "action": "newTab" } }`
 - runtime-matched profile prompt previews in Profile Studio and theme previews
 - literal prompt-template spacing preserved in Theme Studio and Profile Studio previews
-- per-profile prompt shaping on non-Windows fallbacks so sessions do not collapse to `bash-5.2$`
+- per-profile prompt shaping on non-Windows shell launches and fallbacks so sessions do not collapse to `bash-5.2$`
+- user-scoped settings now win by default, while the repo sample stays opt-in through `--settings`
 - sanitized session previews so control sequences such as bracketed-paste markers do not leak into summaries
 - real viewport application for `padding`, explicit `lineHeight`, and `window.useMica`
 - stricter launch cwd validation so file paths do not become session working directories
@@ -110,10 +113,13 @@ webpty up --settings ./config/webpty.settings.json
 webpty up --funnel
 ```
 
-`--funnel` uses the local `tailscale` CLI to publish the embedded web UI. Run
-`tailscale up` first and make sure the node has Funnel capability enabled.
-Treat Funnel as public exposure of the shell surface and only use it behind a
-trusted machine and network policy.
+`--funnel` uses the local `tailscale` CLI to publish the embedded web UI. If the
+local client is offline, `webpty` first attempts `tailscale up` automatically
+before allocating Funnel. For headless bootstrap flows, `webpty` also honors
+`WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY`.
+If interactive login is still required, `webpty` prints the Tailscale auth URL
+and exits cleanly. Treat Funnel as public exposure of the shell surface and only
+use it behind a trusted machine and network policy.
 
 ## Settings Path
 
@@ -121,8 +127,13 @@ Resolution order:
 
 1. `webpty up --settings <path>`
 2. `WEBPTY_SETTINGS_PATH=<path>`
-3. `./config/webpty.settings.json` in the current working directory, if present
-4. user-scoped platform path
+3. user-scoped platform path
+
+The repository sample settings file stays opt-in through:
+
+```bash
+webpty up --settings ./config/webpty.settings.json
+```
 
 User-scoped platform path:
 

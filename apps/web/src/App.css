@@ -1571,6 +1571,10 @@ select.field-input {
   box-shadow: none;
 }
 
+.field-input-color {
+  font: 500 12px/1.4 var(--mono);
+}
+
 .field-input:focus,
 .settings-editor:focus {
   outline: 2px solid color-mix(in srgb, var(--accent) 18%, transparent);
@@ -1578,9 +1582,9 @@ select.field-input {
 
 .color-input-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 40px;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .field-color {
@@ -1769,6 +1773,11 @@ select.field-input {
 .rail-tab-close svg {
   width: 13px;
   height: 13px;
+}
+
+.rail-tab-close svg {
+  width: 8px;
+  height: 8px;
 }
 
 .session-rail.is-collapsed {

@@ -1982,9 +1982,10 @@ function ColorField({
       <span>{label}</span>
       <div className="color-input-row">
         <input
-          className="field-input"
+          className="field-input field-input-color"
           value={value ?? ''}
           placeholder={fallback}
+          spellCheck={false}
           onChange={(event) => onChange(event.target.value)}
         />
         <div className="field-color-shell">

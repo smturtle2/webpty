@@ -27,6 +27,8 @@ use include_dir::{Dir, include_dir};
 use portable_pty::{Child, ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::{
     process::Command as TokioCommand,
     sync::{RwLock, broadcast},
@@ -38,6 +40,7 @@ const DEFAULT_PORT: u16 = 3001;
 const FALLBACK_SETTINGS_PATH: &str = "config/webpty.settings.json";
 const DEFAULT_SETTINGS_FILENAME: &str = "settings.json";
 const DEFAULT_FUNNEL_ALLOWED_HTTPS_PORTS: [u16; 3] = [443, 8443, 10000];
+const DEFAULT_TAILSCALE_UP_TIMEOUT: &str = "30s";
 const WEB_UI_FINGERPRINT: &str = env!("WEBPTY_UI_FINGERPRINT");
 static WEB_UI_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/ui");
 
@@ -806,11 +809,32 @@ async fn run_up(options: UpOptions) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    #[cfg(unix)]
+    {
+        let ctrl_c = tokio::signal::ctrl_c();
+        let mut terminate =
+            signal(SignalKind::terminate()).expect("SIGTERM listener should initialize");
+        let mut hangup = signal(SignalKind::hangup()).expect("SIGHUP listener should initialize");
+
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = terminate.recv() => {}
+            _ = hangup.recv() => {}
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }
 
 async fn start_funnel(host: &str, port: u16) -> Result<TunnelHandle, Box<dyn std::error::Error>> {
-    ensure_tailscale_ready().await?;
+    let status = ensure_tailscale_ready().await?;
+
+    if !status_supports_funnel(&status) {
+        println!("webpty funnel requesting Funnel capability from the local Tailscale node");
+    }
 
     let target = funnel_proxy_target(host, port);
     let selection = select_funnel_port(&target).await?;
@@ -861,24 +885,60 @@ async fn stop_tunnel(tunnel: &mut TunnelHandle) {
     }
 }
 
-async fn ensure_tailscale_ready() -> Result<(), Box<dyn std::error::Error>> {
-    let status = run_tailscale_json(["status", "--json"]).await?;
-    let backend_state = status
-        .get("BackendState")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
+async fn ensure_tailscale_ready() -> Result<JsonValue, Box<dyn std::error::Error>> {
+    let mut attempted_bootstrap = false;
+    let mut status = match run_tailscale_json(["status", "--json"]).await {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!(
+                "webpty funnel: failed to read Tailscale status ({error}); attempting automatic setup"
+            );
+            bootstrap_tailscale().await?;
+            attempted_bootstrap = true;
+            run_tailscale_json(["status", "--json"]).await?
+        }
+    };
+    let mut backend_state = tailscale_backend_state(&status);
 
     if backend_state != "Running" {
-        return Err(format!(
-            "tailscale is not ready (BackendState = `{backend_state}`); run `tailscale up` first"
-        )
-        .into());
+        if !attempted_bootstrap {
+            eprintln!(
+                "webpty funnel: preparing Tailscale with `tailscale up` (BackendState = `{backend_state}`)"
+            );
+            bootstrap_tailscale().await?;
+            status = run_tailscale_json(["status", "--json"]).await?;
+            backend_state = tailscale_backend_state(&status);
+        }
+
+        if backend_state != "Running" {
+            return Err(tailscale_bootstrap_error(&status, backend_state).into());
+        }
     }
 
-    let supports_funnel = status_supports_funnel(&status);
+    Ok(status)
+}
 
-    if !supports_funnel {
-        return Err("this Tailscale node is missing Funnel capability".into());
+fn tailscale_backend_state(status: &JsonValue) -> &str {
+    status
+        .get("BackendState")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default()
+}
+
+async fn bootstrap_tailscale() -> Result<(), Box<dyn std::error::Error>> {
+    let auth_key = configured_tailscale_auth_key();
+    let args = tailscale_up_args(auth_key.as_deref());
+    let mode = if auth_key.is_some() {
+        "configured auth key"
+    } else {
+        "interactive login when required"
+    };
+
+    eprintln!("webpty funnel: attempting `tailscale up` with {mode}");
+
+    let output = run_tailscale_command(args).await?;
+    if !output.is_empty() {
+        println!("{output}");
     }
 
     Ok(())
@@ -891,7 +951,15 @@ enum FunnelSelection {
 }
 
 async fn select_funnel_port(target: &str) -> Result<FunnelSelection, Box<dyn std::error::Error>> {
-    let status = run_tailscale_json(["funnel", "status", "--json"]).await?;
+    let status = match run_tailscale_json(["funnel", "status", "--json"]).await {
+        Ok(status) => status,
+        Err(error) => {
+            eprintln!(
+                "webpty funnel: could not inspect existing Funnel mappings ({error}); assuming no reusable mappings"
+            );
+            JsonValue::Object(JsonMap::new())
+        }
+    };
     let allowed_ports = allowed_funnel_ports().await?;
 
     if let Some(port) = existing_funnel_port(&status, target) {
@@ -926,23 +994,35 @@ fn status_supports_funnel(status: &JsonValue) -> bool {
         .pointer("/Self/CapabilitiesMap/funnel")
         .and_then(JsonValue::as_bool)
         .unwrap_or(false)
+        || status.pointer("/Self/CapMap/funnel").is_some()
         || capability_strings(status)
             .into_iter()
-            .any(capability_mentions_funnel)
+            .any(|capability| capability_mentions_funnel(&capability))
         || funnel_capability_ports(status).is_some()
 }
 
-fn capability_strings<'a>(status: &'a JsonValue) -> Vec<&'a str> {
-    status
+fn capability_strings(status: &JsonValue) -> Vec<String> {
+    let mut values = status
         .pointer("/Self/Capabilities")
         .and_then(JsonValue::as_array)
         .map(|capabilities| {
             capabilities
                 .iter()
                 .filter_map(JsonValue::as_str)
+                .map(str::to_string)
                 .collect::<Vec<_>>()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    if let Some(map) = status
+        .pointer("/Self/CapabilitiesMap")
+        .or_else(|| status.pointer("/Self/CapMap"))
+        .and_then(JsonValue::as_object)
+    {
+        values.extend(map.keys().cloned());
+    }
+
+    values
 }
 
 fn capability_mentions_funnel(capability: &str) -> bool {
@@ -1001,6 +1081,7 @@ async fn run_tailscale_command(
     args: impl IntoIterator<Item = impl Into<String>>,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let args = args.into_iter().map(Into::into).collect::<Vec<String>>();
+    let display = display_tailscale_args(&args);
     let output = TokioCommand::new("tailscale")
         .args(&args)
         .stdin(Stdio::null())
@@ -1008,7 +1089,7 @@ async fn run_tailscale_command(
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|error| format!("failed to execute `tailscale {}`: {error}", args.join(" ")))?;
+        .map_err(|error| format!("failed to execute `tailscale {display}`: {error}"))?;
 
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
@@ -1024,7 +1105,64 @@ async fn run_tailscale_command(
         format!("process exited with status {}", output.status)
     };
 
-    Err(format!("`tailscale {}` failed: {detail}", args.join(" ")).into())
+    Err(format!("`tailscale {display}` failed: {detail}").into())
+}
+
+fn tailscale_bootstrap_error(status: &JsonValue, backend_state: &str) -> String {
+    let login_hint = tailscale_auth_url(status)
+        .map(|url| {
+            format!(" Complete the Tailscale login flow at {url} and rerun `webpty up --funnel`.")
+        })
+        .unwrap_or_else(|| {
+            " Rerun `webpty up --funnel` after the local Tailscale client reaches a running state."
+                .to_string()
+        });
+
+    format!(
+        "tailscale is not ready after automatic setup (BackendState = `{backend_state}`).{login_hint}"
+    )
+}
+
+fn tailscale_auth_url(status: &JsonValue) -> Option<&str> {
+    status
+        .get("AuthURL")
+        .and_then(JsonValue::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn configured_tailscale_auth_key() -> Option<String> {
+    ["WEBPTY_TAILSCALE_AUTH_KEY", "TS_AUTHKEY", "TS_AUTH_KEY"]
+        .into_iter()
+        .find_map(|key| env::var(key).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn tailscale_up_args(auth_key: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "up".to_string(),
+        format!("--timeout={DEFAULT_TAILSCALE_UP_TIMEOUT}"),
+    ];
+
+    if let Some(auth_key) = auth_key {
+        args.push(format!("--auth-key={auth_key}"));
+    }
+
+    args
+}
+
+fn display_tailscale_args(args: &[String]) -> String {
+    args.iter()
+        .map(|value| {
+            if value.starts_with("--auth-key=") {
+                "--auth-key=<redacted>".to_string()
+            } else {
+                value.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn existing_funnel_port(status: &JsonValue, target: &str) -> Option<u16> {
@@ -1417,12 +1555,11 @@ fn default_settings_path() -> PathBuf {
         return PathBuf::from(path);
     }
 
-    let workspace_path = PathBuf::from(FALLBACK_SETTINGS_PATH);
-    if workspace_path.exists() {
-        return workspace_path;
+    if let Some(path) = user_settings_path() {
+        return path;
     }
 
-    user_settings_path().unwrap_or(workspace_path)
+    PathBuf::from(FALLBACK_SETTINGS_PATH)
 }
 
 fn user_settings_path() -> Option<PathBuf> {
@@ -1601,7 +1738,23 @@ fn build_launch_plan(profile: &TerminalProfile, cwd_override: Option<String>) ->
             };
         }
 
-        let builder = if let Some(builder) = command_builder_from_commandline(commandline) {
+        #[cfg(not(target_os = "windows"))]
+        if let Some(builder) = plain_shell_command_builder(commandline, profile, &mut notes) {
+            let fallback = default_shell_builder(Some(profile));
+
+            return LaunchPlan {
+                command: builder,
+                command_label: commandline.to_string(),
+                fallback_command: Some(fallback.clone()),
+                fallback_label: Some(default_shell_label()),
+                cwd,
+                notes,
+            };
+        }
+
+        let builder = if let Some(mut builder) = command_builder_from_commandline(commandline) {
+            #[cfg(not(target_os = "windows"))]
+            maybe_apply_primary_profile_prompt(&mut builder, commandline, Some(profile));
             builder
         } else {
             notes.push(format!(
@@ -1908,8 +2061,75 @@ fn default_shell_label() -> String {
 
 #[cfg(not(windows))]
 fn apply_profile_prompt(builder: &mut CommandBuilder, profile: Option<&TerminalProfile>) {
-    builder.env("PS1", profile_prompt(profile));
+    let prompt = profile_prompt(profile);
+    let shell_program = builder
+        .get_argv()
+        .first()
+        .and_then(|value| value.to_str())
+        .map(program_name);
+
+    builder.env("PS1", prompt.clone());
     builder.env("PROMPT_COMMAND", "");
+    if matches!(shell_program.as_deref(), Some("zsh") | Some("zsh.exe")) {
+        builder.env("PROMPT", prompt);
+    }
+    if matches!(shell_program.as_deref(), Some("fish") | Some("fish.exe")) {
+        builder.env("fish_greeting", "");
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn plain_shell_command_builder(
+    commandline: &str,
+    profile: &TerminalProfile,
+    notes: &mut Vec<String>,
+) -> Option<CommandBuilder> {
+    let args = parse_commandline_args(commandline)?;
+    let executable = args.first()?.to_string();
+    let program = program_name(&executable);
+    let mut builder = match program.as_str() {
+        "bash" | "bash.exe" if args.len() == 1 => {
+            let mut builder = CommandBuilder::new(&executable);
+            builder.arg("--noprofile");
+            builder.arg("--norc");
+            builder.arg("-i");
+            builder
+        }
+        "sh" if args.len() == 1 => {
+            let mut builder = CommandBuilder::new(&executable);
+            builder.arg("-i");
+            builder
+        }
+        "zsh" | "zsh.exe" if args.len() == 1 => {
+            let mut builder = CommandBuilder::new(&executable);
+            builder.arg("-f");
+            builder.arg("-i");
+            builder
+        }
+        "fish" | "fish.exe" if args.len() == 1 => {
+            let mut builder = CommandBuilder::new(&executable);
+            builder.arg("-i");
+            builder
+        }
+        _ => return None,
+    };
+
+    apply_profile_prompt(&mut builder, Some(profile));
+    notes.push(format!(
+        "normalized `{commandline}` to an interactive {program} shell so the session prompt matches the selected profile."
+    ));
+    Some(builder)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn maybe_apply_primary_profile_prompt(
+    builder: &mut CommandBuilder,
+    commandline: &str,
+    profile: Option<&TerminalProfile>,
+) {
+    if looks_posix_shell_prompt(commandline) {
+        apply_profile_prompt(builder, profile);
+    }
 }
 
 #[cfg(not(windows))]
@@ -2879,6 +3099,61 @@ mod tests {
         assert_eq!(profile_prompt(Some(&profile)), "\\u@ops:\\w\\$ ");
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn build_launch_plan_normalizes_plain_bash_profiles() {
+        let profile = TerminalProfile {
+            guid: None,
+            name: "Ops".to_string(),
+            icon: None,
+            commandline: Some("bash".to_string()),
+            starting_directory: None,
+            source: None,
+            hidden: None,
+            tab_color: None,
+            tab_title: None,
+            color_scheme: None,
+            font: None,
+            font_face: None,
+            font_size: None,
+            font_weight: None,
+            cell_height: None,
+            line_height: None,
+            cursor_shape: None,
+            opacity: None,
+            use_acrylic: None,
+            foreground: None,
+            background: None,
+            cursor_color: None,
+            selection_background: None,
+            padding: None,
+            webpty: Some(WebptyProfileOptions {
+                prompt: Some("[{profile}] {cwd}{symbol} ".to_string()),
+                extra: JsonMap::new(),
+            }),
+            extra: JsonMap::new(),
+        };
+
+        let plan = build_launch_plan(&profile, None);
+        let argv = plan
+            .command
+            .get_argv()
+            .iter()
+            .filter_map(|value| value.to_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(argv.first().copied(), Some("bash"));
+        assert!(argv.contains(&"--noprofile"));
+        assert!(argv.contains(&"--norc"));
+        assert!(argv.contains(&"-i"));
+        assert!(
+            plan.notes
+                .iter()
+                .any(|note| note.contains("interactive bash shell")),
+            "plain bash profiles should be normalized onto an interactive shell builder"
+        );
+    }
+
     #[test]
     fn normalize_settings_reassigns_hidden_default_profile() {
         let mut settings = default_settings();
@@ -2921,6 +3196,35 @@ mod tests {
         assert_eq!(
             default_settings_path(),
             PathBuf::from("/tmp/webpty-tests/settings.json")
+        );
+
+        match original_override {
+            Some(value) => unsafe { env::set_var("WEBPTY_SETTINGS_PATH", value) },
+            None => unsafe { env::remove_var("WEBPTY_SETTINGS_PATH") },
+        }
+
+        match original_xdg {
+            Some(value) => unsafe { env::set_var("XDG_CONFIG_HOME", value) },
+            None => unsafe { env::remove_var("XDG_CONFIG_HOME") },
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn default_settings_path_prefers_user_scope_over_workspace_sample() {
+        let _guard = env_lock().lock().expect("env mutex poisoned");
+
+        let original_override = env::var_os("WEBPTY_SETTINGS_PATH");
+        let original_xdg = env::var_os("XDG_CONFIG_HOME");
+
+        unsafe {
+            env::remove_var("WEBPTY_SETTINGS_PATH");
+            env::set_var("XDG_CONFIG_HOME", "/tmp/webpty-user-scope");
+        }
+
+        assert_eq!(
+            default_settings_path(),
+            PathBuf::from("/tmp/webpty-user-scope/webpty/settings.json")
         );
 
         match original_override {
@@ -3151,11 +3455,46 @@ mod tests {
                 "Capabilities": ["https://tailscale.com/cap/web/funnel?ports=443,8443"]
             }
         });
+        let cap_map = serde_json::json!({
+            "Self": {
+                "CapMap": {
+                    "https://tailscale.com/cap/funnel-ports?ports=443,8443,10000": null
+                }
+            }
+        });
 
         assert!(status_supports_funnel(&exact));
         assert!(status_supports_funnel(&mapped));
         assert!(status_supports_funnel(&port_only));
+        assert!(status_supports_funnel(&cap_map));
         assert_eq!(funnel_capability_ports(&port_only), Some(vec![443, 8443]));
+        assert_eq!(
+            funnel_capability_ports(&cap_map),
+            Some(vec![443, 8443, 10000])
+        );
+    }
+
+    #[test]
+    fn tailscale_bootstrap_error_surfaces_auth_url() {
+        let status = serde_json::json!({
+            "BackendState": "NeedsLogin",
+            "AuthURL": "https://login.tailscale.example/auth"
+        });
+
+        assert!(
+            tailscale_bootstrap_error(&status, "NeedsLogin")
+                .contains("https://login.tailscale.example/auth")
+        );
+    }
+
+    #[test]
+    fn display_tailscale_args_redacts_auth_keys() {
+        let args = tailscale_up_args(Some("tskey-auth-k3y"));
+
+        assert_eq!(
+            display_tailscale_args(&args),
+            format!("up --timeout={DEFAULT_TAILSCALE_UP_TIMEOUT} --auth-key=<redacted>")
+        );
     }
 
     #[test]

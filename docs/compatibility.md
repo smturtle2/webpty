@@ -68,7 +68,8 @@ Action fields currently mapped by the frontend:
 ## Runtime Behavior
 
 - `webpty up` serves the embedded shell UI, `/api/*`, and `/ws/*` from one Rust process
-- `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then `./config/webpty.settings.json` from the current working directory if present, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux/macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
+- `webpty up` resolves settings in this order: explicit `--settings` / `WEBPTY_SETTINGS_PATH`, then the user-scoped platform path (`~/.config/webpty/settings.json` on Linux/macOS, `%APPDATA%\\webpty\\settings.json` on Windows)
+- the repo sample at `./config/webpty.settings.json` is intentionally opt-in through `webpty up --settings ./config/webpty.settings.json`
 - if the settings file does not exist, `webpty` creates a default one
 - if an existing settings file is invalid, startup fails without overwriting it
 - disk loading accepts JSONC-style comments and trailing commas
@@ -77,17 +78,22 @@ Action fields currently mapped by the frontend:
 - the in-app Theme Studio can create, duplicate, delete, and update `themes[]` entries and can also update `theme`
 - the in-app Profile Studio can create, duplicate, delete, and update `profiles.list[]` entries and can also update `defaultProfile`
 - the in-app Theme and Profile studios expose direct text editing plus color-picker controls for chrome and shell colors
+- theme and profile color inputs keep full token and hex values visible instead of clipping them down to a prefix stub
 - theme and profile color fields also offer shortcut chips for shared token values such as `accent`, `terminalBackground`, `terminalForeground`, `cursorColor`, and `selectionBackground`
 - Profile Studio can edit `webpty.prompt` with `{cwd}`, `{user}`, `{host}`, `{profile}`, and `{symbol}` tokens
 - Profile Studio and Theme Studio previews reuse the same profile-family prompt heuristics as the runtime shell launch path
-- `webpty up --funnel` exposes the same Rust process through Tailscale Funnel when `tailscale up` is already active on the host
+- prompt previews preserve literal template spacing instead of trimming trailing spaces away
+- `webpty up --funnel` exposes the same Rust process through Tailscale Funnel and first attempts `tailscale up` automatically when the local client is offline
+- `webpty up --funnel` honors `WEBPTY_TAILSCALE_AUTH_KEY`, `TS_AUTHKEY`, and `TS_AUTH_KEY` for headless bootstrap flows and otherwise surfaces the interactive login URL when needed
 - `webpty up --funnel` requires `--host` to stay on loopback or all interfaces so Funnel can proxy the local listener safely
 - Tailscale Funnel is allocated from the currently allowed HTTPS ports (commonly `443`, `8443`, `10000`) and existing mappings for the same local target are reused
 - `POST /api/sessions` accepts both `profileId` and `profile_id`
 - `POST /api/sessions` rejects profiles marked with `hidden: true`
 - `defaultProfile` is normalized to a visible launchable profile during load and in-app editing
+- settings payloads must keep at least one visible profile available for launch
 - profile launch uses the configured `commandline` when possible
 - sessions start at the real shell prompt with no synthetic startup banner injected into the transcript
+- on non-Windows hosts, plain shell profile commandlines such as `bash`, `sh`, `zsh`, and `fish` are normalized onto prompt-aware interactive launches when possible
 - if a configured shell cannot be started, the Rust runtime falls back to a platform shell and keeps a profile-matched prompt shape instead of a generic `bash-5.2$`
 - session preview lines strip terminal control sequences before they reach the API or the demo fallback
 - `~` and `%USERPROFILE%`-style paths are expanded when launching a session, and the resolved path must be a directory
